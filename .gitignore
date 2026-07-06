@@ -1,0 +1,5 @@
+.agent/
+.venv/
+.env
+finhub.db
+finhub/_pycache_
