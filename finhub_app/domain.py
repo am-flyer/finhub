@@ -63,3 +63,20 @@ class ReportContext(BaseModel):
     news: list[NewsItem]
     filings: list[FilingItem]
     impacts: list[ImpactAssessment]
+
+
+class Report(BaseModel):
+    id: int | None = None
+    created_at: datetime | None = None
+    title: str = "Daily Pre-Market Investment Report"
+    content: str
+    summary: str | None = None
+    holding_count: int = 0
+    watchlist_count: int = 0
+    generated_for: datetime
+    profile: UserProfile
+    positions: list[Position]
+    market_snapshots: list[MarketSnapshot]
+    news: list[NewsItem]
+    filings: list[FilingItem]
+    impacts: list[ImpactAssessment]

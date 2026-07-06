@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinHub - Pre-Market Investment Dashboard</title>
+    <!-- Google Fonts: Outfit and Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for clean icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-chart-line-up font-gradient"></i>
+                    <span class="font-gradient">FinHub</span>
+                </div>
+                <div class="budget-badge">
+                    <span class="label">Budget</span>
+                    <span class="value" id="budget-value">$100/mo</span>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-generate" id="btn-generate-report">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Generate Report</span>
+            </button>
+
+            <div class="history-section">
+                <h3>Report History</h3>
+                <div class="reports-list" id="reports-list">
+                    <div class="loading-state">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                        <span>Loading reports...</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Navbar -->
+            <header class="navbar">
+                <h1 id="active-report-title">Select a Report</h1>
+                <div class="report-meta" id="active-report-meta" style="display: none;">
+                    <span class="meta-item"><i class="fa-regular fa-calendar"></i> <span id="meta-date">Date</span></span>
+                    <span class="meta-item"><i class="fa-solid fa-briefcase"></i> <span id="meta-holdings">0 Holdings</span></span>
+                    <span class="meta-item"><i class="fa-solid fa-eye"></i> <span id="meta-watchlist">0 Watchlist</span></span>
+                </div>
+            </header>
+
+            <!-- Workspace -->
+            <div class="workspace" id="workspace">
+                <!-- Welcome View -->
+                <div class="welcome-view" id="welcome-view">
+                    <div class="welcome-card">
+                        <i class="fa-solid fa-chart-pie welcome-icon"></i>
+                        <h2>Welcome to FinHub</h2>
+                        <p>Generate a pre-market report or select an existing report from the sidebar to view educational, conservative investment guidance tailored for beginner portfolios.</p>
+                        <div class="quick-stats" id="portfolio-quick-stats">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Report Details View -->
+                <div class="report-view" id="report-view" style="display: none;">
+                    <div class="tabs-container">
+                        <button class="tab-btn active" data-tab="summary-tab">
+                            <i class="fa-solid fa-chart-bar"></i> Impact Summary
+                        </button>
+                        <button class="tab-btn" data-tab="markdown-tab">
+                            <i class="fa-solid fa-file-lines"></i> Full AI Report
+                        </button>
+                    </div>
+
+                    <div class="tab-content active" id="summary-tab">
+                        <div class="summary-grid">
+                            <!-- Left: Score breakdown -->
+                            <div class="summary-column list-panel">
+                                <h3>Holdings Impact Assessments</h3>
+                                <div id="impact-cards-container" class="impact-cards-list">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <!-- Right: News and filings analyzed -->
+                            <div class="summary-column details-panel">
+                                <h3>Data Signals Analyzed</h3>
+                                <div class="signal-section">
+                                    <h4><i class="fa-solid fa-newspaper text-primary"></i> Market & News Sentiment</h4>
+                                    <div class="signals-list" id="signals-news-list">
+                                        <!-- Populated dynamically -->
+                                    </div>
+                                </div>
+                                <div class="signal-section">
+                                    <h4><i class="fa-solid fa-file-signature text-secondary"></i> SEC EDGAR Filings</h4>
+                                    <div class="signals-list" id="signals-filings-list">
+                                        <!-- Populated dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="markdown-tab">
+                        <article class="markdown-body" id="markdown-renderer">
+                            <!-- Rendered Markdown will go here -->
+                        </article>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Fullscreen Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-box">
+            <div class="loading-spinner-container">
+                <i class="fa-solid fa-circle-notch fa-spin spinner"></i>
+                <i class="fa-solid fa-chart-line-up inner-icon"></i>
+            </div>
+            <h2>Generating Report</h2>
+            <p id="loading-status">Scanning holdings & watchlist...</p>
+            <div class="progress-steps">
+                <div class="step active" id="step-collect"><i class="fa-solid fa-circle-check"></i> Collect signals</div>
+                <div class="step" id="step-process"><i class="fa-solid fa-circle-dot"></i> Analyze impact</div>
+                <div class="step" id="step-generate"><i class="fa-solid fa-circle-dot"></i> Generate report</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

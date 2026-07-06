@@ -23,6 +23,11 @@ def main() -> None:
         list_positions()
         return
 
+    if args.command == "serve":
+        from finhub_app.server import run_server
+        run_server(args.port)
+        return
+
     report = generate_daily_report()
     print(report)
 
@@ -47,6 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
     watchlist.add_argument("--name", default=None, help="Company or asset name")
 
     subparsers.add_parser("list-positions", help="Show holdings and watchlist items")
+
+    serve = subparsers.add_parser("serve", help="Start the Web Dashboard server")
+    serve.add_argument("--port", type=int, default=8000, help="Port to run server on (default: 8000)")
+
     return parser
 
 
