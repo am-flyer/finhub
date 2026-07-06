@@ -3,3 +3,4 @@
 .env
 finhub.db
 finhub/_pycache_
+ __pycache__
