@@ -1,6 +1,6 @@
 # FinHub Daily Investment Report
 
-FinHub scans a beginner investor's holdings and watchlist before the market opens, gathers market/news/filing signals, scores likely investment impact, and generates a careful AI report using OpenAI through LangChain.
+FinHub scans a beginner investor's holdings and watchlist before the market opens, gathers market/news/filing signals, scores likely investment impact, and generates a careful AI report using LangChain with Gemini by default.
 
 The system is designed for a user with limited investing capacity, around USD 100 per month. Reports should be educational, conservative, source-aware, and careful about risk.
 
@@ -102,6 +102,10 @@ AI Daily Investment Report
 Create a `.env` file:
 
 ```env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
+
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-4o-mini
 
@@ -113,6 +117,26 @@ MONTHLY_INVESTMENT_BUDGET_USD=100
 MARKET_TIMEZONE=America/New_York
 PRE_MARKET_REPORT_HOUR=8
 PRE_MARKET_REPORT_MINUTE=0
+```
+
+## Portfolio Commands
+
+Add or update a holding:
+
+```powershell
+python main.py add-holding MSFT --name "Microsoft" --quantity 1.18321439 --average-cost 464.84
+```
+
+Add or update a watchlist item:
+
+```powershell
+python main.py add-watchlist VOO --name "Vanguard S&P 500 ETF"
+```
+
+Show saved holdings and watchlist items:
+
+```powershell
+python main.py list-positions
 ```
 
 ## Guardrails
@@ -127,5 +151,5 @@ The report must avoid hard instructions such as "buy this now" or "sell everythi
 - Data collector interfaces for yfinance, Finnhub, Marketaux, and SEC EDGAR
 - Duplicate removal
 - Impact score from -100 to +100
-- LangChain + OpenAI report generation
+- LangChain report generation with Gemini or OpenAI
 - Conservative recommendation guardrails

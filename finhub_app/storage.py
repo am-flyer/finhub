@@ -48,6 +48,19 @@ class PortfolioStore:
                 for row in rows
             ]
 
+    def upsert_position(self, position: Position) -> None:
+        with Session(self.engine) as session:
+            row = session.get(PortfolioAsset, position.symbol.upper())
+            if row is None:
+                row = PortfolioAsset(symbol=position.symbol.upper())
+                session.add(row)
+
+            row.name = position.name
+            row.quantity = position.quantity
+            row.average_cost = position.average_cost
+            row.scope = position.scope.value
+            session.commit()
+
     def get_profile(self, default_budget_usd: float) -> UserProfile:
         with Session(self.engine) as session:
             profile = session.get(BudgetProfile, 1)
