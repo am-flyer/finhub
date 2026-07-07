@@ -1,6 +1,23 @@
+import re
 from functools import lru_cache
-from pydantic import Field
+from pathlib import Path
+from typing import Any
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_database_url(database_url: str) -> str:
+    if not database_url or not database_url.startswith("sqlite:///"):
+        return database_url
+
+    raw_path = database_url[len("sqlite:///"):]
+    if raw_path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:[/\\]", raw_path):
+        return database_url
+
+    project_root = Path(__file__).resolve().parents[1]
+    resolved_path = (project_root / raw_path).resolve()
+    return f"sqlite:///{resolved_path}".replace("\\", "/")
 
 
 class Settings(BaseSettings):
@@ -21,6 +38,11 @@ class Settings(BaseSettings):
     pre_market_report_minute: int = Field(default=0, alias="PRE_MARKET_REPORT_MINUTE")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="after")
+    def validate_database_url(self) -> "Settings":
+        self.database_url = normalize_database_url(self.database_url)
+        return self
 
 
 @lru_cache

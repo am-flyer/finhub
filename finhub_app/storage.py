@@ -1,7 +1,10 @@
 from datetime import datetime
+from pathlib import Path
+
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine, func, or_
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
+from finhub_app.config import normalize_database_url
 from finhub_app.domain import AssetScope, Position, UserProfile
 
 
@@ -69,7 +72,14 @@ def has_useful_news_content(title: str | None, summary: str | None, url: str | N
 
 class PortfolioStore:
     def __init__(self, database_url: str) -> None:
-        self.engine = create_engine(database_url)
+        normalized_url = normalize_database_url(database_url)
+        if normalized_url.startswith("sqlite:///"):
+            sqlite_path = normalized_url[len("sqlite:///"):]
+            if sqlite_path and not sqlite_path.startswith(("/", "\\")):
+                sqlite_path = str(Path(sqlite_path).resolve())
+            if sqlite_path and sqlite_path != ":memory:":
+                Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
+        self.engine = create_engine(normalized_url)
         self.session_factory = sessionmaker(bind=self.engine)
 
     def initialize(self) -> None:
