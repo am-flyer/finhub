@@ -284,7 +284,15 @@ export default function App() {
             <div className="report-meta">
               <span className="meta-item">
                 <i className="fa-regular fa-calendar"></i>
-                <span>{new Date(activeReport.created_at).toLocaleString()}</span>
+                <span>
+                  {new Date(activeReport.created_at).toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
               </span>
               <span 
                 className="meta-item" 

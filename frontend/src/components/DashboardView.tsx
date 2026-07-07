@@ -331,9 +331,6 @@ const HoldingDetailView: React.FC<{
                 <span className="detail-eyebrow">Impact score</span>
                 <h4>{holding.impact ? signed(holding.impact.score) : 'N/A'}</h4>
               </div>
-              <span className={`summary-status status-${scoreTone(holding.impactScore10)}`}>
-                {scoreLabel(holding.impactScore10)}
-              </span>
             </div>
             <p className="detail-copy">{holding.impact?.reason || 'No impact explanation is available for this holding.'}</p>
             <div className="breakdown-grid">
