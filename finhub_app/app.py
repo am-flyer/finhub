@@ -88,6 +88,24 @@ def generate_daily_report() -> str:
             if not summary:
                 summary = "Pre-market daily report and analysis for your holdings and watchlist."
 
+            # Save real-time price snapshots to PriceHistory
+            date_today_str = datetime.now().strftime("%Y-%m-%d")
+            for snap in snapshots:
+                if snap.latest_price is not None:
+                    store.save_price_history(snap.symbol, date_today_str, snap.latest_price)
+
+            # Save real-time news to NewsRecord
+            for item in news:
+                store.save_news_record(
+                    symbol=item.symbol,
+                    published_at=item.published_at or datetime.now(),
+                    title=item.title,
+                    summary=item.summary,
+                    source=item.source,
+                    url=str(item.url) if item.url else None,
+                    sentiment_score=item.sentiment_score
+                )
+
             store.save_report(
                 title="Daily Pre-Market Investment Report",
                 content=content,

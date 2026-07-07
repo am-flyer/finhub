@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { DashboardView } from './components/DashboardView';
 import { HoldingsListView } from './components/HoldingsListView';
 import { AssetFormView } from './components/AssetFormView';
+import { AnalyticsView } from './components/AnalyticsView';
+import { ReportHistoryView } from './components/ReportHistoryView';
 
 interface Position {
   symbol: string;
@@ -32,7 +34,7 @@ interface Report {
 }
 
 export default function App() {
-  const [view, setView] = useState<'dashboard' | 'holdings' | 'add-asset'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'holdings' | 'add-asset' | 'analytics' | 'history'>('dashboard');
   const [reportsList, setReportsList] = useState<ReportMeta[]>([]);
   const [positionsList, setPositionsList] = useState<Position[]>([]);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
@@ -125,7 +127,10 @@ export default function App() {
 
     try {
       const res = await fetch('/api/reports/generate', { method: 'POST' });
-      if (!res.ok) throw new Error('API failed');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       
       clearTimeout(timer1);
@@ -141,11 +146,11 @@ export default function App() {
           setView('dashboard');
         }
       }, 600);
-    } catch (err) {
+    } catch (err: any) {
       clearTimeout(timer1);
       clearTimeout(timer2);
-      console.error(err);
-      alert('Report generation failed. Please check backend logs.');
+      console.error("Report generation failed:", err);
+      alert(`Report generation failed: ${err.message}`);
       setLoadingOverlay(false);
     }
   };
@@ -163,6 +168,33 @@ export default function App() {
   const handleRefresh = () => {
     fetchPositions();
     fetchReports();
+  };
+
+  const handleDeleteReport = async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this report from your history?")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/reports/${id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete report');
+      
+      if (activeReportId === id) {
+        const remaining = reportsList.filter(r => r.id !== id);
+        if (remaining.length > 0) {
+          setActiveReportId(remaining[0].id);
+        } else {
+          setActiveReportId(null);
+          setActiveReport(null);
+        }
+      }
+      
+      await fetchReports();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete report.");
+    }
   };
 
   return (
@@ -208,6 +240,22 @@ export default function App() {
               <span>Add New Asset</span>
             </div>
           )}
+
+          <div 
+            className={`nav-item ${view === 'analytics' ? 'active' : ''}`}
+            onClick={() => setView('analytics')}
+          >
+            <i className="fa-solid fa-chart-line"></i>
+            <span>Analytics</span>
+          </div>
+
+          <div 
+            className={`nav-item ${view === 'history' ? 'active' : ''}`}
+            onClick={() => setView('history')}
+          >
+            <i className="fa-solid fa-clock-rotate-left"></i>
+            <span>Report History</span>
+          </div>
         </div>
 
         {/* Generate Button */}
@@ -219,44 +267,6 @@ export default function App() {
           <i className="fa-solid fa-wand-magic-sparkles"></i>
           <span>Generate Report</span>
         </button>
-
-        {/* Sidebar History (only visible in Dashboard view) */}
-        {view === 'dashboard' && (
-          <div className="history-section">
-            <h3>Report History</h3>
-            <div className="reports-list">
-              {sidebarLoading ? (
-                <div className="loading-state">
-                  <i className="fa-solid fa-circle-notch fa-spin"></i>
-                  <span>Loading history...</span>
-                </div>
-              ) : reportsList.length > 0 ? (
-                reportsList.map((rep) => (
-                  <div 
-                    key={rep.id} 
-                    className={`report-item ${activeReportId === rep.id ? 'active' : ''}`}
-                    onClick={() => setActiveReportId(rep.id)}
-                  >
-                    <div className="report-item-title">{rep.title}</div>
-                    <div className="report-item-summary">{rep.summary}</div>
-                    <div className="report-item-footer">
-                      <span>{new Date(rep.created_at).toLocaleDateString()}</span>
-                      <div className="report-item-badge">
-                        <span>H: {rep.holding_count}</span>
-                        <span>W: {rep.watchlist_count}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="loading-state">
-                  <i className="fa-solid fa-folder-open"></i>
-                  <span>No reports generated yet.</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </aside>
 
       {/* Main Content Pane */}
@@ -267,6 +277,8 @@ export default function App() {
             {view === 'dashboard' && (reportDetailsLoading ? 'Loading report...' : (activeReport ? activeReport.title : 'Select a Report'))}
             {view === 'holdings' && 'My Assets'}
             {view === 'add-asset' && (editingPosition ? `Edit Asset: ${editingPosition.symbol}` : 'Add Asset to Portfolio')}
+            {view === 'analytics' && 'Portfolio Performance & Market Events'}
+            {view === 'history' && 'Daily Pre-Market Report History'}
           </h1>
           {view === 'dashboard' && activeReport && !reportDetailsLoading && (
             <div className="report-meta">
@@ -324,6 +336,22 @@ export default function App() {
             editingPosition={editingPosition}
             onRefresh={handleRefresh}
             onCancel={() => { setEditingPosition(null); setView('holdings'); }}
+          />
+        )}
+
+        {view === 'analytics' && (
+          <AnalyticsView positions={positionsList} />
+        )}
+
+        {view === 'history' && (
+          <ReportHistoryView 
+            reports={reportsList}
+            onViewReport={(id) => {
+              setActiveReportId(id);
+              setView('dashboard');
+            }}
+            onDeleteReport={handleDeleteReport}
+            loading={sidebarLoading}
           />
         )}
       </main>

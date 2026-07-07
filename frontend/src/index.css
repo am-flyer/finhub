@@ -970,13 +970,18 @@ h1, h2, h3, h4, h5, h6 {
         flex-direction: row;
         gap: 4px;
         margin-bottom: 12px;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 4px;
+        width: 100%;
+        -webkit-overflow-scrolling: touch;
     }
     
     .nav-item {
         padding: 8px 12px;
         font-size: 0.85rem;
-        flex: 1;
         justify-content: center;
+        flex-shrink: 0;
     }
     
     .nav-item.active {
@@ -1048,3 +1053,23 @@ h1, h2, h3, h4, h5, h6 {
         font-size: 0.8rem;
     }
 }
+
+.delete-report-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-dark);
+    font-size: 0.85rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.delete-report-btn:hover {
+    color: var(--danger);
+    background-color: var(--danger-glow);
+}
+

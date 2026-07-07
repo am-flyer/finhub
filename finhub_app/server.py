@@ -1,6 +1,7 @@
 import json
 import os
 import urllib.parse
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,6 +29,15 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/positions":
             self.handle_list_positions()
             return
+        elif path == "/api/analytics/portfolio":
+            self.handle_get_portfolio_analytics()
+            return
+        elif path == "/api/analytics/stock":
+            self.handle_get_stock_analytics()
+            return
+        elif path == "/api/news":
+            self.handle_get_news()
+            return
 
         # Static Files Routing
         self.handle_static_file(path)
@@ -51,6 +61,9 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/positions/"):
             self.handle_delete_position(path)
+            return
+        elif path.startswith("/api/reports/"):
+            self.handle_delete_report(path)
             return
 
         self.send_error(404, "Endpoint not found")
@@ -157,6 +170,27 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(500, str(e))
 
+    def handle_delete_report(self, path):
+        try:
+            parts = path.split("/")
+            report_id = int(parts[-1])
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            success = store.delete_report(report_id)
+
+            if not success:
+                self.send_json_error(404, f"Report with ID {report_id} not found")
+                return
+
+            response_data = json.dumps({"success": True, "id": report_id}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_data)))
+            self.end_headers()
+            self.wfile.write(response_data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
 
     def handle_list_reports(self):
         try:
@@ -247,6 +281,110 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response_data)
         except Exception as e:
+            import traceback
+            print("ERROR: Report generation failed:")
+            traceback.print_exc()
+            self.send_json_error(500, str(e))
+
+    def handle_get_portfolio_analytics(self):
+        try:
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            data = store.get_portfolio_value_history()
+            
+            response_data = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_data)))
+            self.end_headers()
+            self.wfile.write(response_data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_get_stock_analytics(self):
+        try:
+            parsed_url = urllib.parse.urlparse(self.path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            
+            symbols = query_params.get("symbol", [])
+            if not symbols:
+                self.send_json_error(400, "Missing required parameter 'symbol'")
+                return
+                
+            symbol = symbols[0].upper().strip()
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            data = store.get_stock_value_history(symbol)
+            
+            response_data = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_data)))
+            self.end_headers()
+            self.wfile.write(response_data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_get_news(self):
+        try:
+            parsed_url = urllib.parse.urlparse(self.path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            
+            symbols = query_params.get("symbol", [])
+            symbol = symbols[0].upper().strip() if symbols else "PORTFOLIO"
+            limits = query_params.get("limit", ["10"])
+            offsets = query_params.get("offset", ["0"])
+            dates = query_params.get("date", [])
+            
+            limit = int(limits[0])
+            offset = int(offsets[0])
+            date_val = dates[0].strip() if dates else None
+            
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            
+            # Skip fresh yfinance fetch if filtering by a specific historical date or PORTFOLIO
+            if offset == 0 and not date_val and symbol != "PORTFOLIO":
+                try:
+                    import yfinance as yf
+                    import html
+                    from finhub_app.seeding import calculate_simple_sentiment
+                    ticker = yf.Ticker(symbol)
+                    news_items = ticker.news
+                    for item in news_items:
+                        title = item.get("title", "")
+                        summary = item.get("summary", "")
+                        source = item.get("publisher", "Yahoo Finance")
+                        url = item.get("link", "")
+                        pub_time = item.get("providerPublishTime", 0)
+
+                        title = html.unescape(title).replace("\xa0", " ").strip()
+                        summary = html.unescape(summary).replace("\xa0", " ").strip() if summary else ""
+ 
+                        published_at = datetime.fromtimestamp(pub_time) if pub_time else datetime.now()
+                        sentiment = calculate_simple_sentiment(title + " " + (summary or ""))
+                        
+                        store.save_news_record(
+                            symbol=symbol,
+                            published_at=published_at,
+                            title=title,
+                            summary=summary,
+                            source=source,
+                            url=url,
+                            sentiment_score=sentiment
+                        )
+                except Exception as ex:
+                    print(f"Warning: Failed to fetch fresh news for {symbol}: {ex}")
+            
+            data = store.get_paginated_news(symbol, limit, offset, date_val)
+            
+            response_data = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_data)))
+            self.end_headers()
+            self.wfile.write(response_data)
+        except Exception as e:
             self.send_json_error(500, str(e))
 
     def send_json_error(self, code, message):
@@ -256,6 +394,7 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(response_data)))
         self.end_headers()
         self.wfile.write(response_data)
+
 
 
 def run_server(port: int = 8000):
