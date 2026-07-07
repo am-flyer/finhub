@@ -4,6 +4,16 @@ FinHub scans a beginner investor's holdings and watchlist before the market open
 
 The system is designed for a user with limited investing capacity, around USD 100 per month. Reports should be educational, conservative, source-aware, and careful about risk.
 
+## Recent Updates
+
+Recent improvements include:
+
+- Fixed database initialization so SQLite paths resolve correctly from the project root, avoiding report-generation failures.
+- Added asset add/edit/delete flows that refresh the portfolio, analytics view, and dashboard in sync.
+- Added historical backfill for newly saved assets so price and news data are collected for roughly the last year.
+- Updated the dashboard and report history to reflect the current live portfolio instead of stale report snapshots.
+- Improved compatibility with existing SQLite data so holdings continue to load even when older schema columns are missing.
+
 ## Architecture
 
 ```text
