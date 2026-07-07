@@ -14,6 +14,7 @@ class Position(BaseModel):
     quantity: float = 0
     average_cost: float | None = None
     scope: AssetScope = AssetScope.HOLDING
+    added_at: datetime | None = None
 
 
 class UserProfile(BaseModel):

@@ -30,6 +30,31 @@ class FilingCollector(Protocol):
 
 
 class YFinanceCollector:
+    def get_historical_prices(
+        self,
+        symbol: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[tuple[str, float]]:
+        ticker = yf.Ticker(symbol)
+        start_value = start_date.date().strftime("%Y-%m-%d") if start_date else None
+        if end_date is None:
+            end_value = datetime.now(UTC).date().strftime("%Y-%m-%d")
+        else:
+            end_value = (end_date + timedelta(days=1)).date().strftime("%Y-%m-%d")
+
+        history = ticker.history(start=start_value, end=end_value, auto_adjust=False)
+        if history.empty:
+            return []
+
+        prices: list[tuple[str, float]] = []
+        for _, row in history.iterrows():
+            close_price = _as_float(row.get("Close"))
+            if close_price is None:
+                continue
+            prices.append((row.name.strftime("%Y-%m-%d"), close_price))
+        return prices
+
     def get_snapshot(self, symbol: str) -> MarketSnapshot:
         ticker = yf.Ticker(symbol)
         history = ticker.history(period="2d")
@@ -101,18 +126,23 @@ class FinnhubCollector:
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
-    def get_news(self, symbol: str) -> list[NewsItem]:
+    def get_news(
+        self,
+        symbol: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[NewsItem]:
         if not self.api_key:
             return []
 
-        today = datetime.now(UTC).date()
-        week_ago = today - timedelta(days=7)
+        end_value = end_date or datetime.now(UTC)
+        start_value = start_date or (end_value - timedelta(days=7))
         response = requests.get(
             "https://finnhub.io/api/v1/company-news",
             params={
                 "symbol": symbol,
-                "from": week_ago.isoformat(),
-                "to": today.isoformat(),
+                "from": start_value.date().isoformat(),
+                "to": end_value.date().isoformat(),
                 "token": self.api_key,
             },
             timeout=20,
@@ -138,18 +168,29 @@ class MarketauxCollector:
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
-    def get_news(self, symbol: str) -> list[NewsItem]:
+    def get_news(
+        self,
+        symbol: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[NewsItem]:
         if not self.api_key:
             return []
 
+        params = {
+            "symbols": symbol,
+            "filter_entities": "true",
+            "language": "en",
+            "api_token": self.api_key,
+        }
+        if start_date is not None:
+            params["published_on_start"] = start_date.date().isoformat()
+        if end_date is not None:
+            params["published_on_end"] = end_date.date().isoformat()
+
         response = requests.get(
             "https://api.marketaux.com/v1/news/all",
-            params={
-                "symbols": symbol,
-                "filter_entities": "true",
-                "language": "en",
-                "api_token": self.api_key,
-            },
+            params=params,
             timeout=20,
         )
         response.raise_for_status()

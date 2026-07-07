@@ -68,15 +68,23 @@ export default function App() {
     }
   }, [activeReportId]);
 
-  const fetchReports = async () => {
+  const fetchReports = async (selectLatest = false) => {
     setSidebarLoading(true);
     try {
       const res = await fetch('/api/reports');
       if (!res.ok) throw new Error('Failed to fetch reports');
       const data = await res.json();
       setReportsList(data);
-      if (data.length > 0 && activeReportId === null) {
-        setActiveReportId(data[0].id);
+      if (data.length > 0) {
+        setActiveReportId((currentId) => {
+          if (selectLatest || currentId === null || !data.some((report: ReportMeta) => report.id === currentId)) {
+            return data[0].id;
+          }
+          return currentId;
+        });
+      } else {
+        setActiveReportId(null);
+        setActiveReport(null);
       }
     } catch (e) {
       console.error(e);
@@ -140,7 +148,7 @@ export default function App() {
       
       setTimeout(async () => {
         setLoadingOverlay(false);
-        await fetchReports();
+        await fetchReports(true);
         if (data.id) {
           setActiveReportId(data.id);
           setView('dashboard');
@@ -167,7 +175,7 @@ export default function App() {
 
   const handleRefresh = () => {
     fetchPositions();
-    fetchReports();
+    fetchReports(true);
   };
 
   const handleDeleteReport = async (id: number) => {
@@ -190,7 +198,7 @@ export default function App() {
         }
       }
       
-      await fetchReports();
+      await fetchReports(true);
     } catch (e) {
       console.error(e);
       alert("Failed to delete report.");
@@ -325,7 +333,7 @@ export default function App() {
                 <span>Loading report details...</span>
               </div>
             ) : (
-              <DashboardView report={activeReport} />
+              <DashboardView report={activeReport} livePositions={positionsList} />
             )}
           </div>
         )}

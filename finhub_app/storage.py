@@ -20,6 +20,7 @@ class PortfolioAsset(Base):
     quantity: Mapped[float] = mapped_column(Float, default=0)
     average_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
     scope: Mapped[str] = mapped_column(String(16), default=AssetScope.HOLDING.value)
+    added_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class BudgetProfile(Base):
@@ -95,6 +96,7 @@ class PortfolioStore:
                     quantity=row.quantity,
                     average_cost=row.average_cost,
                     scope=AssetScope(row.scope),
+                    added_at=row.added_at,
                 )
                 for row in rows
             ]
@@ -110,6 +112,10 @@ class PortfolioStore:
             row.quantity = position.quantity
             row.average_cost = position.average_cost
             row.scope = position.scope.value
+            if row.added_at is None:
+                row.added_at = position.added_at or datetime.now()
+            elif position.added_at is not None:
+                row.added_at = position.added_at
             session.commit()
 
     def get_profile(self, default_budget_usd: float) -> UserProfile:

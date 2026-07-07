@@ -71,6 +71,9 @@ interface FilingItem {
 interface Position {
   symbol: string;
   name?: string | null;
+  scope?: 'holding' | 'watchlist';
+  quantity?: number;
+  average_cost?: number | null;
 }
 
 interface ReportContext {
@@ -83,6 +86,11 @@ interface ReportContext {
   fundamental_snapshots?: FundamentalSnapshot[];
 }
 
+interface DashboardViewProps {
+  report: Report | null;
+  livePositions?: Position[];
+}
+
 interface Report {
   id: number;
   created_at: string;
@@ -92,10 +100,6 @@ interface Report {
   holding_count: number;
   watchlist_count: number;
   json_data?: string;
-}
-
-interface DashboardViewProps {
-  report: Report | null;
 }
 
 interface HoldingSummary {
@@ -121,7 +125,7 @@ type DetailTab = 'impact' | 'business';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ report }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ report, livePositions = [] }) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'full'>('summary');
   const [detailTab, setDetailTab] = useState<DetailTab>('impact');
   const [parsedContext, setParsedContext] = useState<ReportContext | null>(null);
@@ -142,7 +146,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ report }) => {
     setDetailTab('impact');
   }, [report]);
 
-  const holdings = useMemo(() => buildHoldingSummaries(parsedContext), [parsedContext]);
+  const holdings = useMemo(() => buildHoldingSummaries(parsedContext, livePositions), [parsedContext, livePositions]);
   const selectedHolding = selectedSymbol
     ? holdings.find((holding) => holding.symbol === selectedSymbol) || null
     : null;
@@ -486,7 +490,10 @@ const StatBox: React.FC<{ label: string; value: string; tone?: 'green' | 'amber'
   </div>
 );
 
-function buildHoldingSummaries(context: ReportContext | null): HoldingSummary[] {
+function buildHoldingSummaries(
+  context: ReportContext | null,
+  livePositions: Position[] = []
+): HoldingSummary[] {
   if (!context) return [];
 
   const impacts = context.impacts || [];
@@ -496,6 +503,11 @@ function buildHoldingSummaries(context: ReportContext | null): HoldingSummary[] 
   const businessQuality = context.business_quality || [];
   const fundamentalSnapshots = context.fundamental_snapshots || [];
   const positions = context.positions || [];
+  const liveSymbols = new Set(
+    livePositions
+      .filter((p) => p.scope === 'holding')
+      .map((p) => p.symbol.toUpperCase())
+  );
   const symbols = Array.from(new Set([
     ...impacts.map((item) => item.symbol),
     ...businessQuality.map((item) => item.symbol),
@@ -503,7 +515,9 @@ function buildHoldingSummaries(context: ReportContext | null): HoldingSummary[] 
     ...fundamentalSnapshots.map((item) => item.symbol),
   ]));
 
-  return symbols.map((symbol) => {
+  return symbols
+    .filter((symbol) => liveSymbols.size === 0 || liveSymbols.has(symbol.toUpperCase()))
+    .map((symbol) => {
     const impact = impacts.find((item) => item.symbol === symbol);
     const quality = businessQuality.find((item) => item.symbol === symbol);
     const market = marketSnapshots.find((item) => item.symbol === symbol);

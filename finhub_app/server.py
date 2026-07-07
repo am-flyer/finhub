@@ -7,6 +7,7 @@ from pathlib import Path
 
 from finhub_app.app import generate_daily_report
 from finhub_app.config import get_settings
+from finhub_app.history import refresh_position_history
 from finhub_app.storage import PortfolioStore
 
 
@@ -136,7 +137,15 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
             store.initialize()
+            existing = store.list_positions()
+            existing_position = next((p for p in existing if p.symbol == symbol), None)
+            if existing_position is None:
+                position.added_at = datetime.now()
+            else:
+                position.added_at = existing_position.added_at or datetime.now()
             store.upsert_position(position)
+            refresh_position_history(position, store)
+            generate_daily_report()
 
             response_data = json.dumps({"success": True, "symbol": symbol}).encode("utf-8")
             self.send_response(200)
@@ -160,6 +169,8 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             if not success:
                 self.send_json_error(404, f"Position for {symbol} not found")
                 return
+
+            generate_daily_report()
 
             response_data = json.dumps({"success": True, "symbol": symbol}).encode("utf-8")
             self.send_response(200)

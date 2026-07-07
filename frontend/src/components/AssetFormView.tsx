@@ -26,6 +26,7 @@ export const AssetFormView: React.FC<AssetFormViewProps> = ({
   const [scope, setScope] = useState<'holding' | 'watchlist'>('holding');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Populate form if in edit mode
   useEffect(() => {
@@ -62,6 +63,7 @@ export const AssetFormView: React.FC<AssetFormViewProps> = ({
 
     setLoading(true);
     setError(null);
+    setStatusMessage('Saving asset and collecting up to 1 year of market/news history...');
 
     const payload = {
       symbol: symbol.trim().toUpperCase(),
@@ -85,12 +87,14 @@ export const AssetFormView: React.FC<AssetFormViewProps> = ({
         throw new Error(data.error || 'Failed to save position');
       }
 
+      setStatusMessage('Asset saved. Refreshing dashboard and analytics...');
       onRefresh();
       onCancel(); // Go back to list view on success
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setStatusMessage((prev) => prev ?? 'Asset saved.');
     }
   };
 
@@ -101,6 +105,11 @@ export const AssetFormView: React.FC<AssetFormViewProps> = ({
         {error && (
           <div style={{ color: 'var(--danger)', marginBottom: '15px', fontSize: '0.85rem' }}>
             <i className="fa-solid fa-triangle-exclamation"></i> {error}
+          </div>
+        )}
+        {statusMessage && !error && (
+          <div style={{ color: 'var(--primary)', marginBottom: '15px', fontSize: '0.9rem' }}>
+            <i className="fa-solid fa-spinner fa-spin"></i> {statusMessage}
           </div>
         )}
 
