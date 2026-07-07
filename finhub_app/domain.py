@@ -47,6 +47,42 @@ class MarketSnapshot(BaseModel):
     technical_summary: str | None = None
 
 
+class MetricEvaluation(BaseModel):
+    metric: str
+    rating: str
+    value: str | None = None
+    reason: str
+
+
+class FundamentalSnapshot(BaseModel):
+    symbol: str
+    revenue_growth: float | None = None
+    eps_growth: float | None = None
+    free_cash_flow: float | None = None
+    free_cash_flow_growth: float | None = None
+    debt_to_equity: float | None = None
+    return_on_equity: float | None = None
+    dividend_yield: float | None = None
+    payout_ratio: float | None = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    peg_ratio: float | None = None
+    profit_margin: float | None = None
+    gross_margin: float | None = None
+    market_cap: float | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class BusinessQualityAssessment(BaseModel):
+    symbol: str
+    score: int = Field(ge=0, le=8)
+    max_score: int = 8
+    rating: str
+    metrics: list[MetricEvaluation]
+    reason: str
+    risks: list[str] = Field(default_factory=list)
+
+
 class ImpactAssessment(BaseModel):
     symbol: str
     score: int = Field(ge=-100, le=100)
@@ -60,9 +96,11 @@ class ReportContext(BaseModel):
     profile: UserProfile
     positions: list[Position]
     market_snapshots: list[MarketSnapshot]
+    fundamental_snapshots: list[FundamentalSnapshot]
     news: list[NewsItem]
     filings: list[FilingItem]
     impacts: list[ImpactAssessment]
+    business_quality: list[BusinessQualityAssessment]
 
 
 class Report(BaseModel):
@@ -77,6 +115,8 @@ class Report(BaseModel):
     profile: UserProfile
     positions: list[Position]
     market_snapshots: list[MarketSnapshot]
+    fundamental_snapshots: list[FundamentalSnapshot]
     news: list[NewsItem]
     filings: list[FilingItem]
     impacts: list[ImpactAssessment]
+    business_quality: list[BusinessQualityAssessment]

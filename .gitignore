@@ -2,5 +2,6 @@
 .venv/
 .env
 finhub.db
+.yfinance-cache/
 finhub/_pycache_
  __pycache__

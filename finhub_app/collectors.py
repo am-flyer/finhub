@@ -6,11 +6,16 @@ from typing import Protocol
 import requests
 import yfinance as yf
 
-from finhub_app.domain import FilingItem, MarketSnapshot, NewsItem, Position
+from finhub_app.domain import FilingItem, FundamentalSnapshot, MarketSnapshot, NewsItem, Position
 
 
 class MarketDataCollector(Protocol):
     def get_snapshot(self, symbol: str) -> MarketSnapshot:
+        ...
+
+
+class FundamentalDataCollector(Protocol):
+    def get_fundamentals(self, symbol: str) -> FundamentalSnapshot:
         ...
 
 
@@ -39,6 +44,56 @@ class YFinanceCollector:
             symbol=symbol,
             latest_price=latest_price,
             previous_close=previous_close,
+        )
+
+    def get_fundamentals(self, symbol: str) -> FundamentalSnapshot:
+        ticker = yf.Ticker(symbol)
+        notes: list[str] = []
+
+        try:
+            info = ticker.info or {}
+        except Exception as exc:
+            return FundamentalSnapshot(
+                symbol=symbol,
+                notes=[f"Could not load yfinance fundamentals: {exc}"],
+            )
+
+        try:
+            income_statement = ticker.income_stmt
+        except Exception as exc:
+            income_statement = None
+            notes.append(f"Income statement unavailable: {exc}")
+
+        try:
+            cash_flow = ticker.cashflow
+        except Exception as exc:
+            cash_flow = None
+            notes.append(f"Cash flow statement unavailable: {exc}")
+
+        revenue_growth = _statement_growth(income_statement, ["Total Revenue"])
+        eps_growth = _statement_growth(
+            income_statement,
+            ["Diluted EPS", "Basic EPS", "Diluted EPS Normalized"],
+        )
+        free_cash_flow, free_cash_flow_growth = _free_cash_flow_values(cash_flow)
+
+        return FundamentalSnapshot(
+            symbol=symbol,
+            revenue_growth=revenue_growth,
+            eps_growth=eps_growth,
+            free_cash_flow=free_cash_flow,
+            free_cash_flow_growth=free_cash_flow_growth,
+            debt_to_equity=_as_float(info.get("debtToEquity")),
+            return_on_equity=_as_float(info.get("returnOnEquity")),
+            dividend_yield=_as_float(info.get("dividendYield")),
+            payout_ratio=_as_float(info.get("payoutRatio")),
+            trailing_pe=_as_float(info.get("trailingPE")),
+            forward_pe=_as_float(info.get("forwardPE")),
+            peg_ratio=_as_float(info.get("pegRatio")),
+            profit_margin=_as_float(info.get("profitMargins")),
+            gross_margin=_as_float(info.get("grossMargins")),
+            market_cap=_as_float(info.get("marketCap")),
+            notes=notes,
         )
 
 
@@ -133,17 +188,82 @@ class SecEdgarCollector:
 def collect_for_positions(
     positions: list[Position],
     market_collector: MarketDataCollector,
+    fundamental_collector: FundamentalDataCollector,
     news_collectors: list[NewsCollector],
     filing_collector: FilingCollector,
-) -> tuple[list[MarketSnapshot], list[NewsItem], list[FilingItem]]:
+) -> tuple[
+    list[MarketSnapshot],
+    list[FundamentalSnapshot],
+    list[NewsItem],
+    list[FilingItem],
+]:
     snapshots: list[MarketSnapshot] = []
+    fundamentals: list[FundamentalSnapshot] = []
     news: list[NewsItem] = []
     filings: list[FilingItem] = []
 
     for position in positions:
         snapshots.append(market_collector.get_snapshot(position.symbol))
+        fundamentals.append(fundamental_collector.get_fundamentals(position.symbol))
         for collector in news_collectors:
             news.extend(collector.get_news(position.symbol))
         filings.extend(filing_collector.get_filings(position.symbol))
 
-    return snapshots, news, filings
+    return snapshots, fundamentals, news, filings
+
+
+def _as_float(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _statement_growth(statement, row_names: list[str]) -> float | None:
+    if statement is None or getattr(statement, "empty", True):
+        return None
+
+    for row_name in row_names:
+        if row_name not in statement.index or len(statement.columns) < 2:
+            continue
+        latest = _as_float(statement.loc[row_name].iloc[0])
+        previous = _as_float(statement.loc[row_name].iloc[1])
+        if latest is None or previous in (None, 0):
+            continue
+        return (latest - previous) / abs(previous)
+
+    return None
+
+
+def _free_cash_flow_values(cash_flow) -> tuple[float | None, float | None]:
+    if cash_flow is None or getattr(cash_flow, "empty", True):
+        return None, None
+
+    values: list[float] = []
+    if "Free Cash Flow" in cash_flow.index:
+        values = [
+            value
+            for value in (_as_float(item) for item in cash_flow.loc["Free Cash Flow"])
+            if value is not None
+        ]
+    elif "Operating Cash Flow" in cash_flow.index and "Capital Expenditure" in cash_flow.index:
+        values = []
+        for operating, capital_expenditure in zip(
+            cash_flow.loc["Operating Cash Flow"],
+            cash_flow.loc["Capital Expenditure"],
+        ):
+            operating_value = _as_float(operating)
+            capex_value = _as_float(capital_expenditure)
+            if operating_value is not None and capex_value is not None:
+                values.append(operating_value + capex_value)
+
+    if not values:
+        return None, None
+
+    growth = None
+    if len(values) > 1 and values[1] != 0:
+        growth = (values[0] - values[1]) / abs(values[1])
+
+    return values[0], growth

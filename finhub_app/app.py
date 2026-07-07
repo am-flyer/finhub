@@ -9,7 +9,11 @@ from finhub_app.collectors import (
 )
 from finhub_app.config import get_settings
 from finhub_app.domain import ReportContext, AssetScope
-from finhub_app.processing import calculate_impact_scores, deduplicate_news
+from finhub_app.processing import (
+    calculate_business_quality_scores,
+    calculate_impact_scores,
+    deduplicate_news,
+)
 from finhub_app.reporting import GeminiReportGenerator, OpenAIReportGenerator
 from finhub_app.storage import PortfolioStore
 
@@ -22,9 +26,11 @@ def generate_daily_report() -> str:
     positions = store.list_positions()
     profile = store.get_profile(settings.monthly_investment_budget_usd)
 
-    snapshots, raw_news, filings = collect_for_positions(
+    yfinance_collector = YFinanceCollector()
+    snapshots, fundamentals, raw_news, filings = collect_for_positions(
         positions=positions,
-        market_collector=YFinanceCollector(),
+        market_collector=yfinance_collector,
+        fundamental_collector=yfinance_collector,
         news_collectors=[
             FinnhubCollector(settings.finnhub_api_key),
             MarketauxCollector(settings.marketaux_api_key),
@@ -33,15 +39,18 @@ def generate_daily_report() -> str:
     )
     news = deduplicate_news(raw_news)
     impacts = calculate_impact_scores(snapshots, news)
+    business_quality = calculate_business_quality_scores(fundamentals)
 
     context = ReportContext(
         generated_for=datetime.now(UTC),
         profile=profile,
         positions=positions,
         market_snapshots=snapshots,
+        fundamental_snapshots=fundamentals,
         news=news,
         filings=filings,
         impacts=impacts,
+        business_quality=business_quality,
     )
 
     provider = settings.llm_provider.strip().lower()

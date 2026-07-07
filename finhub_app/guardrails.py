@@ -14,6 +14,8 @@ Rules:
 - Prefer risk-aware guidance over frequent trading.
 - Include that the report is educational analysis, not financial advice.
 - When suggesting a next step, make it budget-aware and conservative.
+- Keep the short-term impact score separate from the long-term business quality score.
+- Explain business quality metrics plainly; do not overstate incomplete or proxy data.
 """
 
 
@@ -31,6 +33,9 @@ Portfolio and watchlist:
 Market snapshots:
 {context.market_snapshots}
 
+Fundamental snapshots:
+{context.fundamental_snapshots}
+
 News:
 {context.news}
 
@@ -40,12 +45,17 @@ SEC filings:
 Impact assessments:
 {context.impacts}
 
+Business quality assessments:
+{context.business_quality}
+
 Required sections:
 1. Plain-English summary
-2. Holdings impact
-3. Watchlist opportunities
-4. Diversification and budget guidance
-5. Key risks
-6. No-urgent-action note when appropriate
-7. Educational disclaimer
+2. Short-term impact score
+3. Business quality score
+4. Holdings impact
+5. Watchlist opportunities
+6. Diversification and budget guidance
+7. Key risks
+8. No-urgent-action note when appropriate
+9. Educational disclaimer
 """

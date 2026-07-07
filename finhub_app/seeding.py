@@ -4,7 +4,18 @@ import xml.etree.ElementTree as ET
 import email.utils
 import yfinance as yf
 from datetime import datetime
+from pathlib import Path
+
+from finhub_app.collectors import YFinanceCollector
+from finhub_app.domain import AssetScope
+from finhub_app.processing import calculate_business_quality_scores
 from finhub_app.storage import PortfolioStore
+
+
+def configure_yfinance_cache() -> None:
+    cache_dir = Path(".yfinance-cache").resolve()
+    cache_dir.mkdir(exist_ok=True)
+    yf.set_tz_cache_location(str(cache_dir))
 
 
 def fetch_google_news_rss(symbol: str) -> list[dict]:
@@ -72,12 +83,18 @@ def fetch_google_news_rss(symbol: str) -> list[dict]:
 
 
 def seed_historical_data(database_url: str, start_date: str = "2025-01-01") -> None:
+    configure_yfinance_cache()
+
     store = PortfolioStore(database_url)
     store.initialize()
 
-    positions = store.list_positions()
+    positions = [
+        position
+        for position in store.list_positions()
+        if position.scope == AssetScope.HOLDING
+    ]
     if not positions:
-        print("No holdings or watchlist positions found in database. Add some first.")
+        print("No holding positions found in database. Add holdings first.")
         return
 
     print(f"\n==========================================")
@@ -149,18 +166,25 @@ def calculate_simple_sentiment(text: str) -> float:
 
 
 def seed_past_reports(database_url: str, days: int = 30, articles_per_day: int = 20) -> None:
+    configure_yfinance_cache()
+
     import json
     from datetime import timedelta
     from sqlalchemy.orm import Session
     from finhub_app.storage import ReportRecord, PortfolioAsset, PriceHistory, NewsRecord
-    from finhub_app.domain import AssetScope
 
     store = PortfolioStore(database_url)
     store.initialize()
 
-    # Step 1: Pre-fetch and cache real news articles from Google News RSS for all symbols
+    # Step 1: Pre-fetch and cache real news articles from Google News RSS for holdings.
     with Session(store.engine) as session:
-        positions = session.query(PortfolioAsset).all()
+        positions = session.query(PortfolioAsset).filter(
+            PortfolioAsset.scope == AssetScope.HOLDING.value
+        ).all()
+        if not positions:
+            print("No holding positions found in database. Add holdings first.")
+            return
+
         for pos in positions:
             symbol = pos.symbol.upper()
             print(f"[{symbol}] Pre-fetching real historical news from Google News RSS...")
@@ -195,10 +219,32 @@ def seed_past_reports(database_url: str, days: int = 30, articles_per_day: int =
         ).delete(synchronize_session=False)
         session.commit()
 
-        # Load active positions for context modeling
-        positions = session.query(PortfolioAsset).all()
+        # Load holding positions for context modeling.
+        positions = session.query(PortfolioAsset).filter(
+            PortfolioAsset.scope == AssetScope.HOLDING.value
+        ).all()
         holding_count = sum(1 for p in positions if p.scope == AssetScope.HOLDING.value)
-        watchlist_count = sum(1 for p in positions if p.scope == AssetScope.WATCHLIST.value)
+        watchlist_count = 0
+
+        print("Computing business quality scores for holding stocks...")
+        fundamental_snapshots = []
+        try:
+            collector = YFinanceCollector()
+            fundamentals = [
+                collector.get_fundamentals(pos.symbol.upper())
+                for pos in positions
+            ]
+            fundamental_snapshots = [
+                item.model_dump(mode="json")
+                for item in fundamentals
+            ]
+            business_quality = [
+                item.model_dump(mode="json")
+                for item in calculate_business_quality_scores(fundamentals)
+            ]
+        except Exception as exc:
+            print(f"Warning: Failed to compute business quality scores: {exc}")
+            business_quality = []
 
         existing = session.query(ReportRecord).order_by(ReportRecord.created_at.desc()).first()
         base_content = existing.content if existing else "# Mock Daily Investment Report\n\nThis is a seeded mock report."
@@ -224,9 +270,8 @@ def seed_past_reports(database_url: str, days: int = 30, articles_per_day: int =
                 snapshots.append({
                     "symbol": sym,
                     "latest_price": price,
-                    "prev_close": prev_price,
-                    "volume": 100000.0,
-                    "name": pos.name or sym
+                    "previous_close": prev_price,
+                    "technical_summary": None
                 })
 
             # 2. Fetch news items published on date_str
@@ -293,9 +338,11 @@ def seed_past_reports(database_url: str, days: int = 30, articles_per_day: int =
                     for p in positions
                 ],
                 "market_snapshots": snapshots,
+                "fundamental_snapshots": fundamental_snapshots,
                 "news": day_news,
                 "filings": [],
-                "impacts": day_impacts
+                "impacts": day_impacts,
+                "business_quality": business_quality
             }
 
             record = ReportRecord(
@@ -310,4 +357,3 @@ def seed_past_reports(database_url: str, days: int = 30, articles_per_day: int =
             session.add(record)
         session.commit()
     print(f"Successfully seeded {days} daily reports with real news constraints.")
-
