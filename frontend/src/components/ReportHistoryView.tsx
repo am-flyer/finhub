@@ -14,6 +14,8 @@ interface ReportHistoryViewProps {
   onViewReport: (id: number) => void;
   onDeleteReport: (id: number) => void;
   loading: boolean;
+  holdingCount?: number;
+  watchlistCount?: number;
 }
 
 export const ReportHistoryView: React.FC<ReportHistoryViewProps> = ({
@@ -21,6 +23,8 @@ export const ReportHistoryView: React.FC<ReportHistoryViewProps> = ({
   onViewReport,
   onDeleteReport,
   loading,
+  holdingCount = 0,
+  watchlistCount = 0,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
@@ -349,8 +353,8 @@ export const ReportHistoryView: React.FC<ReportHistoryViewProps> = ({
                       })}
                     </span>
                     <div className="card-badges">
-                      <span className="card-badge card-badge-holdings">H: {rep.holding_count}</span>
-                      <span className="card-badge card-badge-watchlist">W: {rep.watchlist_count}</span>
+                      <span className="card-badge card-badge-holdings">H: {holdingCount}</span>
+                      <span className="card-badge card-badge-watchlist">W: {watchlistCount}</span>
                     </div>
                   </div>
 

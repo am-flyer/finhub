@@ -76,55 +76,49 @@ def generate_daily_report() -> str:
     else:
         content = f"Unsupported LLM_PROVIDER '{settings.llm_provider}'. Use 'gemini' or 'openai'."
 
-    # If generation succeeded and is not an error string, save it
-    if "is missing" not in content and "Unsupported LLM_PROVIDER" not in content:
-        try:
-            holding_count = sum(1 for p in positions if p.scope == AssetScope.HOLDING)
-            watchlist_count = sum(1 for p in positions if p.scope == AssetScope.WATCHLIST)
-            json_data = context.model_dump_json()
-            
-            # Simple summary extraction
-            summary = ""
-            if "### 1. Plain-English Summary" in content:
-                try:
-                    parts = content.split("### 1. Plain-English Summary")
-                    summary_part = parts[1].split("---")[0].strip()
-                    paragraphs = [p.strip() for p in summary_part.split("\n\n") if p.strip()]
-                    if paragraphs:
-                        summary = paragraphs[0]
-                except Exception:
-                    pass
-            if not summary:
-                summary = "Pre-market daily report and analysis for your holdings and watchlist."
+    try:
+        holding_count = sum(1 for p in positions if p.scope == AssetScope.HOLDING)
+        watchlist_count = sum(1 for p in positions if p.scope == AssetScope.WATCHLIST)
+        json_data = context.model_dump_json()
 
-            # Save real-time price snapshots to PriceHistory
-            date_today_str = datetime.now().strftime("%Y-%m-%d")
-            for snap in snapshots:
-                if snap.latest_price is not None:
-                    store.save_price_history(snap.symbol, date_today_str, snap.latest_price)
+        summary = ""
+        if "### 1. Plain-English Summary" in content:
+            try:
+                parts = content.split("### 1. Plain-English Summary")
+                summary_part = parts[1].split("---")[0].strip()
+                paragraphs = [p.strip() for p in summary_part.split("\n\n") if p.strip()]
+                if paragraphs:
+                    summary = paragraphs[0]
+            except Exception:
+                pass
+        if not summary:
+            summary = "Pre-market daily report and analysis for your holdings and watchlist."
 
-            # Save real-time news to NewsRecord
-            for item in news:
-                store.save_news_record(
-                    symbol=item.symbol,
-                    published_at=item.published_at or datetime.now(),
-                    title=item.title,
-                    summary=item.summary,
-                    source=item.source,
-                    url=str(item.url) if item.url else None,
-                    sentiment_score=item.sentiment_score
-                )
+        date_today_str = datetime.now().strftime("%Y-%m-%d")
+        for snap in snapshots:
+            if snap.latest_price is not None:
+                store.save_price_history(snap.symbol, date_today_str, snap.latest_price)
 
-            store.save_report(
-                title="Daily Pre-Market Investment Report",
-                content=content,
-                summary=summary[:500] if summary else None,
-                holding_count=holding_count,
-                watchlist_count=watchlist_count,
-                json_data=json_data
+        for item in news:
+            store.save_news_record(
+                symbol=item.symbol,
+                published_at=item.published_at or datetime.now(),
+                title=item.title,
+                summary=item.summary,
+                source=item.source,
+                url=str(item.url) if item.url else None,
+                sentiment_score=item.sentiment_score
             )
-        except Exception as e:
-            # Print warning but still return content
-            print(f"Warning: Failed to save report to database: {e}")
+
+        store.save_report(
+            title="Daily Pre-Market Investment Report",
+            content=content,
+            summary=summary[:500] if summary else None,
+            holding_count=holding_count,
+            watchlist_count=watchlist_count,
+            json_data=json_data
+        )
+    except Exception as e:
+        print(f"Warning: Failed to save report to database: {e}")
 
     return content

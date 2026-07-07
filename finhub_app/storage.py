@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine, func, or_
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine, func, or_, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from finhub_app.config import normalize_database_url
@@ -88,7 +88,21 @@ class PortfolioStore:
 
     def list_positions(self) -> list[Position]:
         with Session(self.engine) as session:
-            rows = session.query(PortfolioAsset).order_by(PortfolioAsset.symbol).all()
+            try:
+                rows = session.query(PortfolioAsset).order_by(PortfolioAsset.symbol).all()
+            except Exception:
+                rows = []
+                for row in session.execute(text("SELECT symbol, name, quantity, average_cost, scope FROM portfolio_assets ORDER BY symbol")).fetchall():
+                    rows.append(
+                        Position(
+                            symbol=row[0],
+                            name=row[1],
+                            quantity=row[2] or 0,
+                            average_cost=row[3],
+                            scope=AssetScope(row[4]),
+                            added_at=None,
+                        )
+                    )
             return [
                 Position(
                     symbol=row.symbol,

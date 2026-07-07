@@ -76,9 +76,10 @@ export default function App() {
       const data = await res.json();
       setReportsList(data);
       if (data.length > 0) {
+        const latestReportId = data[0].id;
         setActiveReportId((currentId) => {
           if (selectLatest || currentId === null || !data.some((report: ReportMeta) => report.id === currentId)) {
-            return data[0].id;
+            return latestReportId;
           }
           return currentId;
         });
@@ -309,7 +310,7 @@ export default function App() {
                 title="View My Assets"
               >
                 <i className="fa-solid fa-briefcase"></i>
-                <span>{activeReport.holding_count} Holdings</span>
+                <span>{positionsList.filter((position) => position.scope === 'holding').length} Holdings</span>
               </span>
               <span 
                 className="meta-item" 
@@ -318,7 +319,7 @@ export default function App() {
                 title="View My Assets"
               >
                 <i className="fa-solid fa-eye"></i>
-                <span>{activeReport.watchlist_count} Watchlist</span>
+                <span>{positionsList.filter((position) => position.scope === 'watchlist').length} Watchlist</span>
               </span>
             </div>
           )}
@@ -368,6 +369,8 @@ export default function App() {
             }}
             onDeleteReport={handleDeleteReport}
             loading={sidebarLoading}
+            holdingCount={positionsList.filter((position) => position.scope === 'holding').length}
+            watchlistCount={positionsList.filter((position) => position.scope === 'watchlist').length}
           />
         )}
       </main>
