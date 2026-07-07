@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine, func, or_
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from finhub_app.domain import AssetScope, Position, UserProfile
@@ -60,6 +60,10 @@ class NewsRecord(Base):
     source: Mapped[str] = mapped_column(String(128))
     url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+def has_useful_news_content(title: str | None, summary: str | None, url: str | None) -> bool:
+    return bool((title or "").strip() and ((summary or "").strip() or (url or "").strip()))
 
 
 
@@ -201,7 +205,13 @@ class PortfolioStore:
         source: str,
         url: str | None,
         sentiment_score: float | None
-    ) -> None:
+    ) -> bool:
+        title = (title or "").strip()
+        summary = (summary or "").strip() or None
+        url = (url or "").strip() or None
+        if not has_useful_news_content(title, summary, url):
+            return False
+
         with Session(self.engine) as session:
             record = session.query(NewsRecord).filter(
                 NewsRecord.symbol == symbol.upper(),
@@ -219,6 +229,8 @@ class PortfolioStore:
                 )
                 session.add(record)
                 session.commit()
+                return True
+            return False
 
     def get_portfolio_value_history(self) -> list[dict]:
         with Session(self.engine) as session:
@@ -263,6 +275,12 @@ class PortfolioStore:
             
             news = session.query(NewsRecord).filter(
                 NewsRecord.symbol == symbol
+            ).filter(
+                func.trim(func.coalesce(NewsRecord.title, "")) != "",
+                or_(
+                    func.trim(func.coalesce(NewsRecord.summary, "")) != "",
+                    func.trim(func.coalesce(NewsRecord.url, "")) != "",
+                )
             ).order_by(NewsRecord.published_at.desc()).all()
             
             return {
@@ -287,6 +305,13 @@ class PortfolioStore:
     def get_paginated_news(self, symbol: str, limit: int, offset: int, date_str: str = None) -> list[dict]:
         with Session(self.engine) as session:
             query = session.query(NewsRecord)
+            query = query.filter(
+                func.trim(func.coalesce(NewsRecord.title, "")) != "",
+                or_(
+                    func.trim(func.coalesce(NewsRecord.summary, "")) != "",
+                    func.trim(func.coalesce(NewsRecord.url, "")) != "",
+                )
+            )
             if symbol and symbol.upper().strip() != "PORTFOLIO":
                 query = query.filter(NewsRecord.symbol == symbol.upper().strip())
                 
@@ -318,5 +343,4 @@ class PortfolioStore:
                 }
                 for r in rows
             ]
-
 

@@ -44,6 +44,23 @@ interface AnalyticsViewProps {
 
 type TimeframeOption = 'max' | '5y' | '2y' | '1y' | '6m' | '3m' | '1m' | 'weekly' | 'day';
 
+const cleanText = (text: string | null): string => {
+  if (!text) return '';
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\xa0/g, ' ')
+    .trim();
+};
+
+const hasUsefulNewsContent = (news: NewsItem): boolean => {
+  return Boolean(cleanText(news.title) && (cleanText(news.summary) || cleanText(news.url)));
+};
+
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ positions }) => {
   const holdings = positions.filter(p => p.scope === 'holding');
   
@@ -137,7 +154,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ positions }) => {
       }
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch news');
-      const data: NewsItem[] = await res.json();
+      const data: NewsItem[] = (await res.json()).filter(hasUsefulNewsContent);
       
       if (append) {
         setNewsList(prev => [...prev, ...data]);
@@ -159,20 +176,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ positions }) => {
     const nextOffset = newsOffset + 10;
     setNewsOffset(nextOffset);
     fetchNews(selectedSymbol, nextOffset, true, selectedDate);
-  };
-
-  // Helper function to escape HTML entity codes (like &nbsp; and &amp;) when displaying
-  const cleanText = (text: string | null): string => {
-    if (!text) return '';
-    return text
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/\xa0/g, ' ') // Strip non-breaking spaces
-      .trim();
   };
 
   // Trailing window data filtering helper
@@ -1201,14 +1204,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ positions }) => {
                         <span style={{ color: sentimentColor, fontWeight: '700' }}>{sentimentLabel}</span>
                       </div>
                       
-                      <a 
-                        href={news.url || '#'} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="news-card-title"
-                      >
-                        {cleanText(news.title)}
-                      </a>
+                      {news.url ? (
+                        <a 
+                          href={news.url} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="news-card-title"
+                        >
+                          {cleanText(news.title)}
+                        </a>
+                      ) : (
+                        <span className="news-card-title">{cleanText(news.title)}</span>
+                      )}
                       
                       {news.summary && (
                         <p className="news-card-summary">

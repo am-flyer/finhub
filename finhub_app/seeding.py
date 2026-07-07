@@ -9,7 +9,7 @@ from pathlib import Path
 from finhub_app.collectors import YFinanceCollector
 from finhub_app.domain import AssetScope
 from finhub_app.processing import calculate_business_quality_scores
-from finhub_app.storage import PortfolioStore
+from finhub_app.storage import PortfolioStore, has_useful_news_content
 
 
 def configure_yfinance_cache() -> None:
@@ -191,6 +191,8 @@ def seed_past_reports(database_url: str, days: int = 30, articles_per_day: int =
             real_articles = fetch_google_news_rss(symbol)
             saved_count = 0
             for art in real_articles:
+                if not has_useful_news_content(art["title"], art["summary"], art["url"]):
+                    continue
                 # Check duplicate news by title and symbol
                 existing_art = session.query(NewsRecord).filter(
                     NewsRecord.symbol == symbol,
