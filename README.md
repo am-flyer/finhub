@@ -189,11 +189,26 @@ The design is market-agnostic at the core: the same feature engineering, predict
 
 The first market to build is US equities. Once the US adapter layer is validated, the same architecture can be extended to India, Japan, or other markets by adding new collector adapters and market-specific sources.
 
+A few design principles:
+- Prefer public and government-based sources over paid vendor services when possible.
+- Keep third-party vendor adapters like Finnhub and Marketaux optional and replaceable.
+- Persist raw source metadata in the database for every collected record so we can compare sources, audit data quality, and migrate between providers later.
+- Build generic feature engineering around normalized data rows keyed by `(market, symbol, date)`.
+
+### Scale and extensibility
+
+The design is intended to scale from a small watchlist to thousands of stocks across multiple exchanges by:
+- using batch-friendly market adapters that can collect symbols in groups and cache results when possible
+- storing every raw input source with metadata so data quality can be compared across providers and markets
+- keeping the core feature store and prediction pipeline independent of the source adapter implementation
+- supporting incremental backfill and daily refresh for large universes of symbols
+- treating optional vendor APIs as fallback or augmentation, not as the primary data source for scale
+
 ### Core feature pipeline
 
 - Data collection from public and trusted sources with market-specific adapters:
   - US: Yahoo Finance, SEC EDGAR, FRED, CBOE/VIX, public news feeds
-  - India: NSE/BSE public data, RBI/FED local macro feeds, company filings, news pages
+  - India: NSE/BSE public data, RBI/MOF macro feeds, company filings, local news sources
   - Japan: TSE/JPX public data, BOJ/METI macro feeds, EDINET filings, local news sources
 - Feature engineering:
   - technical indicators and momentum
@@ -208,6 +223,9 @@ The first market to build is US equities. Once the US adapter layer is validated
   - backtesting against simple baselines
 - LLM analyst:
   - explain why the model produced the forecast
+  - summarize top positive/negative drivers
+  - highlight risks and confidence
+  - avoid asking the LLM to predict raw prices
   - summarize top positive/negative drivers
   - highlight risks and confidence
   - avoid asking the LLM to predict raw prices
