@@ -85,6 +85,28 @@ class PortfolioStore:
 
     def initialize(self) -> None:
         Base.metadata.create_all(self.engine)
+        self._migrate_schema()
+
+    def _migrate_schema(self) -> None:
+        expected_columns = {
+            "portfolio_assets": [
+                ("added_at", "DATETIME"),
+            ],
+            "reports": [
+                ("json_data", "TEXT"),
+            ],
+            "news_records": [
+                ("sentiment_score", "FLOAT"),
+            ],
+        }
+
+        with self.engine.begin() as connection:
+            for table_name, columns in expected_columns.items():
+                result = connection.execute(text(f"PRAGMA table_info({table_name})"))
+                existing_columns = {row[1] for row in result.fetchall()}
+                for column_name, column_type in columns:
+                    if column_name not in existing_columns:
+                        connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
 
     def list_positions(self) -> list[Position]:
         with Session(self.engine) as session:

@@ -301,6 +301,7 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         try:
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
+            store.initialize()
             data = store.get_portfolio_value_history()
             
             response_data = json.dumps(data).encode("utf-8")
@@ -325,6 +326,7 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             symbol = symbols[0].upper().strip()
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
+            store.initialize()
             data = store.get_stock_value_history(symbol)
             
             response_data = json.dumps(data).encode("utf-8")
@@ -409,6 +411,10 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
 
 
 def run_server(port: int = 8000):
+    settings = get_settings()
+    store = PortfolioStore(settings.database_url)
+    store.initialize()
+
     server_address = ("", port)
     httpd = ThreadingHTTPServer(server_address, FinhubHTTPRequestHandler)
     print(f"\n==========================================")
