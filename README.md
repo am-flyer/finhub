@@ -339,14 +339,42 @@ Example database URLs:
 Current code supports DB selection via `DATABASE_URL`, and the new prediction tables will be added in a way that does not change the existing report workflow.
 
 ### Scale and extensibility
-
+ 
 The design is intended to scale from a small watchlist to thousands of stocks across multiple exchanges by:
 - using batch-friendly market adapters that can collect symbols in groups and cache results when possible
 - storing every raw input source with metadata so data quality can be compared across providers and markets
 - keeping the core feature store and prediction pipeline independent of the source adapter implementation
 - supporting incremental backfill and daily refresh for large universes of symbols
 - treating optional vendor APIs as fallback or augmentation, not as the primary data source for scale
-
+ 
+### Baseline modeling and data readiness
+ 
+Before a full production prediction engine is built, the project should establish a set of simple, transparent baseline models and a data readiness process.
+ 
+Baseline model candidates:
+- Naive baselines: always predict "up", yesterday's direction, or a simple momentum rule based on recent returns.
+- Linear models: logistic regression for direction labels, ridge/lasso regression for next-day return.
+- Decision trees: a first non-linear tabular benchmark.
+- Gradient-boosted trees: XGBoost, LightGBM, CatBoost for the first real model candidates.
+- Sequence-aware models later: MLP, LSTM/GRU, or transformer-based temporal models once the tabular baselines are stable.
+ 
+Data readiness and validation:
+- The database schema already supports raw ingestion and a generic feature store.
+- The remaining step is to populate the raw tables and then run the feature engineering pipeline to create `feature_records`.
+- Training data is constructed from feature rows keyed by `(market, symbol, as_of_date)` plus target labels derived from future price action.
+- Validation should be time-aware, using chronological splits or rolling walk-forward backtests rather than random sampling.
+- A proper evaluation should compare every model against naive baselines and simple benchmark strategies.
+ 
+Developer debug UI:
+- The portal should include a dedicated developer/debug page separate from the user-facing prediction page.
+- This page can expose ingestion health, feature coverage, sample feature vectors, model metrics, and backtest summaries.
+- Recommended backend endpoints include:
+  - `/api/debug/ingestion-status`
+  - `/api/debug/feature-sample`
+  - `/api/debug/backtest-summary`
+  - `/api/debug/raw-counts`
+- Keeping debug/diagnostic views separate lets the main prediction UX remain clean while developers inspect model readiness and data quality.
+ 
 ### Core feature pipeline
 
 - Data collection from public and trusted sources with market-specific adapters:
