@@ -194,6 +194,40 @@ A few design principles:
 - Keep third-party vendor adapters like Finnhub and Marketaux optional and replaceable.
 - Persist raw source metadata in the database for every collected record so we can compare sources, audit data quality, and migrate between providers later.
 - Build generic feature engineering around normalized data rows keyed by `(market, symbol, date)`.
+- Keep the new prediction/feature-engineering layer decoupled from the existing report generation logic by using separate database tables and services while sharing the same SQLite database file.
+
+### Decoupled data model
+
+The new feature engineering and prediction functionality will be implemented using independent tables in the common database, for example:
+- `raw_market_data`
+- `raw_news_records`
+- `raw_fundamental_data`
+- `feature_rows`
+- `prediction_results`
+- `prediction_explanations`
+
+This allows the new system to:
+- reuse the existing database file without changing the current table schema
+- keep existing report generation and storage behavior intact
+- store source metadata alongside raw values for audit and source comparison
+- add new markets and collectors without modifying the original portfolio/report workflow
+
+### Database strategy
+
+For hobby and local development, SQLite is fine. For a production deployment that may serve many users, use a server-grade SQL database.
+
+Recommended production databases:
+- PostgreSQL: best general-purpose choice for reliability, concurrency, and SQLAlchemy compatibility.
+- MySQL / MariaDB: a solid alternative if your infrastructure is already MySQL-based.
+
+The project is designed to be DB-agnostic through SQLAlchemy. To switch databases, update `DATABASE_URL` in `.env` and install the appropriate Python DB driver.
+
+Example database URLs:
+- `sqlite:///finhub.db`
+- `postgresql+psycopg2://user:password@host:5432/finhub`
+- `mysql+pymysql://user:password@host:3306/finhub`
+
+Current code supports DB selection via `DATABASE_URL`, and the new prediction tables will be added in a way that does not change the existing report workflow.
 
 ### Scale and extensibility
 
@@ -258,11 +292,15 @@ FINNHUB_API_KEY=your_finnhub_api_key
 MARKETAUX_API_KEY=your_marketaux_api_key
 
 DATABASE_URL=sqlite:///finhub.db
+# For PostgreSQL: postgresql+psycopg2://user:password@host:5432/finhub
+# For MySQL: mysql+pymysql://user:password@host:3306/finhub
 MONTHLY_INVESTMENT_BUDGET_USD=100
 MARKET_TIMEZONE=America/New_York
 PRE_MARKET_REPORT_HOUR=8
 PRE_MARKET_REPORT_MINUTE=0
 ```
+
+This project is built on SQLAlchemy, so the database engine is configurable via `DATABASE_URL`. SQLite is recommended for local development. For production-scale usage, PostgreSQL is the preferred DB because of its reliability, concurrency, and compatibility with millions of users. MySQL / MariaDB are also viable alternatives.
 
 ## Stock Evaluation Metrics
 

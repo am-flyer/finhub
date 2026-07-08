@@ -1,10 +1,11 @@
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, create_engine, func, or_, text
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func, inspect, or_, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from finhub_app.config import normalize_database_url
+from finhub_app.database import create_database_engine, create_session_factory
 from finhub_app.domain import AssetScope, Position, UserProfile
 
 
@@ -73,15 +74,8 @@ def has_useful_news_content(title: str | None, summary: str | None, url: str | N
 
 class PortfolioStore:
     def __init__(self, database_url: str) -> None:
-        normalized_url = normalize_database_url(database_url)
-        if normalized_url.startswith("sqlite:///"):
-            sqlite_path = normalized_url[len("sqlite:///"):]
-            if sqlite_path and not sqlite_path.startswith(("/", "\\")):
-                sqlite_path = str(Path(sqlite_path).resolve())
-            if sqlite_path and sqlite_path != ":memory:":
-                Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(normalized_url)
-        self.session_factory = sessionmaker(bind=self.engine)
+        self.engine = create_database_engine(database_url)
+        self.session_factory = create_session_factory(self.engine)
 
     def initialize(self) -> None:
         Base.metadata.create_all(self.engine)
@@ -100,16 +94,18 @@ class PortfolioStore:
             ],
         }
 
+        inspector = inspect(self.engine)
         with self.engine.begin() as connection:
             for table_name, columns in expected_columns.items():
-                result = connection.execute(text(f"PRAGMA table_info({table_name})"))
-                existing_columns = {row[1] for row in result.fetchall()}
+                if not inspector.has_table(table_name):
+                    continue
+                existing_columns = {col_info["name"] for col_info in inspector.get_columns(table_name)}
                 for column_name, column_type in columns:
                     if column_name not in existing_columns:
                         connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
 
     def list_positions(self) -> list[Position]:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             try:
                 rows = session.query(PortfolioAsset).order_by(PortfolioAsset.symbol).all()
             except Exception:
@@ -138,7 +134,7 @@ class PortfolioStore:
             ]
 
     def upsert_position(self, position: Position) -> None:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             row = session.get(PortfolioAsset, position.symbol.upper())
             if row is None:
                 row = PortfolioAsset(symbol=position.symbol.upper())
@@ -155,7 +151,7 @@ class PortfolioStore:
             session.commit()
 
     def get_profile(self, default_budget_usd: float) -> UserProfile:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             profile = session.get(BudgetProfile, 1)
             if profile is None:
                 return UserProfile(monthly_budget_usd=default_budget_usd)
@@ -173,7 +169,7 @@ class PortfolioStore:
         watchlist_count: int,
         json_data: str | None = None,
     ) -> int:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             record = ReportRecord(
                 title=title,
                 content=content,
@@ -187,7 +183,7 @@ class PortfolioStore:
             return record.id
 
     def list_reports(self) -> list[dict]:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             rows = session.query(ReportRecord).order_by(ReportRecord.id.desc()).all()
             return [
                 {
@@ -202,7 +198,7 @@ class PortfolioStore:
             ]
 
     def get_report(self, report_id: int) -> dict | None:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             row = session.get(ReportRecord, report_id)
             if row is None:
                 return None
@@ -218,7 +214,7 @@ class PortfolioStore:
             }
 
     def delete_position(self, symbol: str) -> bool:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             row = session.get(PortfolioAsset, symbol.upper())
             if row is not None:
                 session.delete(row)
@@ -227,7 +223,7 @@ class PortfolioStore:
             return False
 
     def delete_report(self, report_id: int) -> bool:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             row = session.get(ReportRecord, report_id)
             if row is not None:
                 session.delete(row)
@@ -236,7 +232,7 @@ class PortfolioStore:
             return False
 
     def save_price_history(self, symbol: str, date_str: str, price: float) -> None:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             record = session.query(PriceHistory).filter(
                 PriceHistory.symbol == symbol.upper(),
                 PriceHistory.date == date_str
@@ -264,7 +260,7 @@ class PortfolioStore:
         if not has_useful_news_content(title, summary, url):
             return False
 
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             record = session.query(NewsRecord).filter(
                 NewsRecord.symbol == symbol.upper(),
                 NewsRecord.title == title
@@ -285,7 +281,7 @@ class PortfolioStore:
             return False
 
     def get_portfolio_value_history(self) -> list[dict]:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             holdings = session.query(PortfolioAsset).filter(
                 PortfolioAsset.scope == "holding"
             ).all()
@@ -317,7 +313,7 @@ class PortfolioStore:
 
     def get_stock_value_history(self, symbol: str) -> dict:
         symbol = symbol.upper().strip()
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             asset = session.get(PortfolioAsset, symbol)
             avg_cost = asset.average_cost if (asset and asset.scope == "holding") else None
             
@@ -355,7 +351,7 @@ class PortfolioStore:
             }
 
     def get_paginated_news(self, symbol: str, limit: int, offset: int, date_str: str = None) -> list[dict]:
-        with Session(self.engine) as session:
+        with self.session_factory() as session:
             query = session.query(NewsRecord)
             query = query.filter(
                 func.trim(func.coalesce(NewsRecord.title, "")) != "",
