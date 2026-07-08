@@ -258,6 +258,17 @@ Not yet fully covered:
 - Options analytics beyond aggregate call/put IV and OI: IV rank/percentile, skew, true ATM IV, and richer chain-level expiry metrics.
 - Sector-relative and market-relative benchmarking using peer, sector, and index reference data.
 - Industry risk factor ingestion such as sector-specific macro drivers and business-cycle exposures.
+
+## TODOs / Next Implementation Steps
+
+The next development work is focused on turning the debug console into a true data readiness and ops view, plus completing the feature pipeline for production use.
+
+- Add backend ready checks for raw ingestion health, freshness, and completeness across markets.
+- Add backend ready checks for feature generation coverage, freshness, and expected feature set completeness.
+- Extend the developer/admin UI with controlled seed/sync actions for manual refresh, reprocessing, and status inspection.
+- Add job orchestration or scheduler wiring so ingestion and feature generation run automatically, with the UI showing current status rather than being the only trigger.
+- Harden the data pipeline for production traffic by using a DB-ready adapter layer and removing reliance on SQLite for high-scale workloads.
+- Implement sector-relative and market-relative benchmark ingestion, plus richer options analytics (IV rank, skew, expiry-level metrics).
 - Advanced fundamental event extraction from filings/news for granular surprises, guidance text, and analyst rating metadata.
 - Country-specific macro sources for non-US markets until those adapters are added and validated.
 - Direct earnings surprise numeric values or seasonality-adjusted fundamental growth rates, since current fundamentals are derived from static snapshot fields.
