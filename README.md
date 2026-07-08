@@ -196,6 +196,79 @@ A few design principles:
 - Build generic feature engineering around normalized data rows keyed by `(market, symbol, date)`.
 - Keep the new prediction/feature-engineering layer decoupled from the existing report generation logic by using separate database tables and services while sharing the same SQLite database file.
 
+### Feature Store and Feature Set
+
+The feature store is the core of the prediction platform. It ingests normalized raw records and computes a consistent, market-agnostic set of derived features that can be consumed by the prediction engine.
+
+The platform is being built around six broad feature sets:
+
+1. Technical indicators
+   - RSI (Relative Strength Index): measures recent price momentum and overbought/oversold conditions.
+   - MACD / signal crossovers: captures momentum shifts in price action.
+   - Bollinger band percent: shows where the close sits inside recent volatility bands.
+   - EMA / SMA crossovers and distance: tracks trend direction and price divergence from moving averages.
+   - ATR (Average True Range): measures intraday volatility and price range.
+   - ADX (Average Directional Index): measures directional strength in a trend.
+   - OBV (On-Balance Volume): accumulates volume flow as a proxy for buying/selling pressure.
+   - Volume momentum and relative volume: compares today's volume to recent averages.
+
+2. Price/return structure
+   - Next-day and multi-day returns: raw percentage moves over 1, 5, 10, and 20 days.
+   - Gap percentages: compute open-to-close and close-to-open price gaps.
+   - Rolling volatility: standard deviation over multiple lookback windows.
+   - Range percentages: daily high/low amplitude relative to closing price.
+   - Relative price level: distance from moving averages and historical price distribution.
+   - Historical percentile ranks: compare today's close/volume to recent history.
+
+3. Options-derived signals
+   - Put/Call ratio: relative demand for downside protection versus bullish exposure.
+   - Implied volatility and IV spreads: captures option market pricing skew.
+   - Open interest ratios and spreads: measures sentiment from call/put positioning.
+   - ATM IV and aggregate option volatility: near-term expectations from the options surface.
+   - Net call/put exposure: approximate directional bias from OI differences.
+
+4. News / event / sentiment features
+   - News sentiment scores: aggregated polarity across recent news items.
+   - Event tags: earnings surprise, guidance change, rating change, and other corporate actions.
+   - News volume: count of news items and positive/negative story frequency.
+   - Event proximity: days until the next scheduled event and whether one is imminent.
+
+5. Macro / regime context
+   - Macro indicator values: VIX, yields, currency indices, commodity prices, and other regime signals.
+   - Macro changes: recent percent changes in the same macro series.
+   - Market regime context: rising/falling risk environment for the chosen market.
+   - Country-specific macro readings: CPI, interest rate decisions, and central bank signals for each market.
+
+6. Fundamentals and company context
+   - Raw fundamentals: valuation, leverage, profitability, and payout metrics.
+   - Derived ratios: P/E spread, forward/trailing P/E ratio, P/E-to-PEG, and margin spreads.
+   - Leverage and quality: debt/equity, return on equity, gross vs profit margin comparison.
+   - Event-driven fundamentals: earnings surprises, guidance changes, and rating action flags.
+
+Current implementation status:
+- The current feature engineering pipeline already normalizes fundamentals, raw options, news/events, and macro values into raw tables and generates derived features in `feature_records`.
+- Most technical and price structure indicators are already implemented, including RSI, MACD, Bollinger %B, ATR, EMAs/SMA crossovers, volume momentum, and OBV.
+- Options-derived features include raw call/put IV and open interest values plus derived IV/oi ratios and spreads.
+- News/event features include sentiment aggregation, recent counts, and event flags for earnings surprise, guidance change, and rating change.
+- Macro features include latest macro values and change calculations versus prior observations.
+- Fundamental features include normalized raw fundamentals and derived valuation/leverage ratios when source data is available.
+- Sector-relative and market-relative benchmarks are not yet fully implemented because they require benchmark and sector metadata ingestion; the platform already supports internal historical relative measures and will extend to cross-asset/sector ranking as market adapters are enhanced.
+
+Not yet fully covered:
+- Options analytics beyond aggregate call/put IV and OI: IV rank/percentile, skew, true ATM IV, and richer chain-level expiry metrics.
+- Sector-relative and market-relative benchmarking using peer, sector, and index reference data.
+- Industry risk factor ingestion such as sector-specific macro drivers and business-cycle exposures.
+- Advanced fundamental event extraction from filings/news for granular surprises, guidance text, and analyst rating metadata.
+- Country-specific macro sources for non-US markets until those adapters are added and validated.
+- Direct earnings surprise numeric values or seasonality-adjusted fundamental growth rates, since current fundamentals are derived from static snapshot fields.
+
+Each feature set is kept generic so it can be adapted to new markets. For example, US fundamentals may come from SEC filings and Yahoo Finance, while India fundamentals can be sourced from NSE/BSE feeds and local disclosures.
+
+The feature engineering pipeline is intentionally implemented inside the feature store layer. It has three responsibilities:
+- normalize raw ingestion records into common feature input rows,
+- compute derived features in a market-agnostic way,
+- persist feature rows separately from raw source records for prediction and auditing.
+
 ### Prediction UI binding and workflow
 
 The new multi-market prediction feature is exposed on its own UI page and bound to backend services through dedicated API endpoints. It supports:
