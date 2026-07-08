@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     finnhub_api_key: str = Field(default="", alias="FINNHUB_API_KEY")
     marketaux_api_key: str = Field(default="", alias="MARKETAUX_API_KEY")
+    fred_api_key: str = Field(default="", alias="FRED_API_KEY")
     database_url: str = Field(default="sqlite:///finhub.db", alias="DATABASE_URL")
     monthly_investment_budget_usd: float = Field(
         default=100.0, alias="MONTHLY_INVESTMENT_BUDGET_USD"

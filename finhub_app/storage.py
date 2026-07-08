@@ -1,12 +1,23 @@
 from datetime import datetime
 from pathlib import Path
+import json
 
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func, inspect, or_, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from finhub_app.config import normalize_database_url
 from finhub_app.database import create_database_engine, create_session_factory
-from finhub_app.domain import AssetScope, Position, UserProfile
+from finhub_app.domain import (
+    AssetScope,
+    Position,
+    UserProfile,
+    RawDataPoint,
+    RawNewsPayload,
+    RawFilingPayload,
+    RawOptionsPayload,
+    RawMacroPayload,
+    RawEventPayload,
+)
 
 
 class Base(DeclarativeBase):
@@ -65,6 +76,102 @@ class NewsRecord(Base):
     source: Mapped[str] = mapped_column(String(128))
     url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class RawDataRecord(Base):
+    __tablename__ = "raw_data_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    as_of_date: Mapped[str | None] = mapped_column(String(10), index=True, nullable=True)
+    data_type: Mapped[str] = mapped_column(String(64), index=True)
+    field_name: Mapped[str] = mapped_column(String(128))
+    numeric_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RawNewsRecord(Base):
+    __tablename__ = "raw_news_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    title: Mapped[str] = mapped_column(String(512))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RawFilingRecord(Base):
+    __tablename__ = "raw_filing_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    form_type: Mapped[str] = mapped_column(String(64))
+    filed_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=True)
+    title: Mapped[str] = mapped_column(String(512))
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RawOptionsRecord(Base):
+    __tablename__ = "raw_options_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    as_of_date: Mapped[str | None] = mapped_column(String(10), index=True, nullable=True)
+    field_name: Mapped[str] = mapped_column(String(128))
+    numeric_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RawMacroRecord(Base):
+    __tablename__ = "raw_macro_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    macro_name: Mapped[str] = mapped_column(String(128), index=True)
+    as_of_date: Mapped[str | None] = mapped_column(String(10), index=True, nullable=True)
+    numeric_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RawEventRecord(Base):
+    __tablename__ = "raw_event_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    symbol: Mapped[str | None] = mapped_column(String(16), index=True, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(128), index=True)
+    event_date: Mapped[datetime | None] = mapped_column(DateTime, index=True, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 def has_useful_news_content(title: str | None, summary: str | None, url: str | None) -> bool:
@@ -279,6 +386,144 @@ class PortfolioStore:
                 session.commit()
                 return True
             return False
+
+    def save_raw_data_record(self, record: RawDataPoint) -> None:
+            with self.session_factory() as session:
+                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+                session.add(
+                    RawDataRecord(
+                        market=record.market,
+                        symbol=record.symbol.upper(),
+                        as_of_date=record.as_of_date,
+                        data_type=record.data_type,
+                        field_name=record.field_name,
+                        numeric_value=record.numeric_value,
+                        text_value=record.text_value,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
+                )
+                session.commit()
+
+    def save_raw_news_record(self, record: RawNewsPayload) -> bool:
+            title = (record.title or "").strip()
+            if not title:
+                return False
+
+            with self.session_factory() as session:
+                existing = session.query(RawNewsRecord).filter(
+                    RawNewsRecord.symbol == record.symbol.upper(),
+                    RawNewsRecord.title == title,
+                    RawNewsRecord.source_name == record.source_name,
+                    RawNewsRecord.published_at == (record.published_at or datetime.now()),
+                ).first()
+                if existing is not None:
+                    return False
+
+                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+                session.add(
+                    RawNewsRecord(
+                        market=record.market,
+                        symbol=record.symbol.upper(),
+                        published_at=record.published_at or datetime.now(),
+                        title=title,
+                        summary=record.summary,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        url=str(record.url) if record.url else None,
+                        sentiment_score=record.sentiment_score,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
+                )
+                session.commit()
+                return True
+
+    def save_raw_filing_record(self, record: RawFilingPayload) -> bool:
+            with self.session_factory() as session:
+                existing = session.query(RawFilingRecord).filter(
+                    RawFilingRecord.symbol == record.symbol.upper(),
+                    RawFilingRecord.form_type == record.form_type,
+                    RawFilingRecord.filed_at == (record.filed_at or datetime.now()),
+                    RawFilingRecord.source_name == record.source_name,
+                ).first()
+                if existing is not None:
+                    return False
+
+                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+                session.add(
+                    RawFilingRecord(
+                        market=record.market,
+                        symbol=record.symbol.upper(),
+                        form_type=record.form_type,
+                        filed_at=record.filed_at,
+                        title=record.title,
+                        url=str(record.url) if record.url else None,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
+                )
+                session.commit()
+                return True
+
+    def save_raw_options_record(self, record: RawOptionsPayload) -> None:
+            with self.session_factory() as session:
+                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+                session.add(
+                    RawOptionsRecord(
+                        market=record.market,
+                        symbol=record.symbol.upper(),
+                        as_of_date=record.as_of_date,
+                        field_name=record.field_name,
+                        numeric_value=record.numeric_value,
+                        text_value=record.text_value,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
+                )
+                session.commit()
+
+    def save_raw_macro_record(self, record: RawMacroPayload) -> None:
+            with self.session_factory() as session:
+                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+                session.add(
+                    RawMacroRecord(
+                        market=record.market,
+                        macro_name=record.macro_name,
+                        as_of_date=record.as_of_date,
+                        numeric_value=record.numeric_value,
+                        text_value=record.text_value,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
+                )
+                session.commit()
+
+    def save_raw_event_record(self, record: RawEventPayload) -> None:
+            with self.session_factory() as session:
+                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+                session.add(
+                    RawEventRecord(
+                        market=record.market,
+                        symbol=record.symbol.upper() if record.symbol else None,
+                        event_type=record.event_type,
+                        event_date=record.event_date,
+                        description=record.description,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
+                )
+                session.commit()
 
     def get_portfolio_value_history(self) -> list[dict]:
         with self.session_factory() as session:

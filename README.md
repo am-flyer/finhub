@@ -225,6 +225,15 @@ This allows the new system to:
 - store source metadata alongside raw values for audit and source comparison
 - add new markets and collectors without modifying the original portfolio/report workflow
 
+### Raw source ingestion layer
+
+The first extensible ingestion implementation now includes:
+- `raw_data_records` for generic market, fundamental, options, macro, and derived signals.
+- `raw_news_records` for source-specific news items, sentiment, and article metadata.
+- `raw_filing_records`, `raw_options_records`, `raw_macro_records`, and `raw_event_records` for structured raw source events.
+- A US adapter layer using yfinance as the primary open-source market source, with Finnhub and Marketaux as optional news fallbacks.
+- A `RawSourceIngestionManager` that keeps raw ingestion decoupled from existing report generation and makes it easy to add new markets later.
+
 ### Database strategy
 
 For hobby and local development, SQLite is fine. For a production deployment that may serve many users, use a server-grade SQL database.

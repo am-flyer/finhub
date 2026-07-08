@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, HttpUrl
+from typing import Any
 
 
 class AssetScope(str, Enum):
@@ -72,6 +73,84 @@ class FundamentalSnapshot(BaseModel):
     gross_margin: float | None = None
     market_cap: float | None = None
     notes: list[str] = Field(default_factory=list)
+
+
+class RawDataPoint(BaseModel):
+    market: str
+    symbol: str
+    as_of_date: str | None = None
+    data_type: str
+    field_name: str
+    numeric_value: float | None = None
+    text_value: str | None = None
+    source_name: str
+    source_type: str
+    raw_payload: dict[str, Any] | None = None
+    retrieved_at: datetime | None = None
+
+
+class RawNewsPayload(BaseModel):
+    market: str
+    symbol: str
+    published_at: datetime | None = None
+    title: str
+    summary: str | None = None
+    source_name: str
+    source_type: str
+    url: HttpUrl | None = None
+    sentiment_score: float | None = None
+    raw_payload: dict[str, Any] | None = None
+    retrieved_at: datetime | None = None
+
+
+class RawFilingPayload(BaseModel):
+    market: str
+    symbol: str
+    form_type: str
+    filed_at: datetime | None = None
+    title: str
+    url: HttpUrl | None = None
+    source_name: str
+    source_type: str
+    raw_payload: dict[str, Any] | None = None
+    retrieved_at: datetime | None = None
+
+
+class RawOptionsPayload(BaseModel):
+    market: str
+    symbol: str
+    as_of_date: str | None = None
+    field_name: str
+    numeric_value: float | None = None
+    text_value: str | None = None
+    source_name: str
+    source_type: str
+    raw_payload: dict[str, Any] | None = None
+    retrieved_at: datetime | None = None
+
+
+class RawMacroPayload(BaseModel):
+    market: str
+    macro_name: str
+    as_of_date: str | None = None
+    numeric_value: float | None = None
+    text_value: str | None = None
+    source_name: str
+    source_type: str
+    raw_payload: dict[str, Any] | None = None
+    retrieved_at: datetime | None = None
+
+
+class RawEventPayload(BaseModel):
+    market: str
+    symbol: str | None = None
+    event_type: str
+    event_date: datetime | None = None
+    description: str | None = None
+    source_name: str
+    source_type: str
+    raw_payload: dict[str, Any] | None = None
+    retrieved_at: datetime | None = None
 
 
 class BusinessQualityAssessment(BaseModel):
