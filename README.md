@@ -111,6 +111,119 @@ AI Daily Investment Report
 +-----------------------------+
 ```
 
+## Multi-Market Prediction Architecture
+
+FinHub is evolving from a pre-market report system into a multi-market prediction platform. The initial implementation will focus on US equities, but the architecture is explicitly designed to support future markets such as India and Japan by adding market-specific data adapters.
+
+The design is market-agnostic at the core: the same feature engineering, prediction, and explanation layers can be reused across regions. Only the data ingestion layer changes when new markets are added.
+
+```text
+                            +------------------------------+
+                            |   Market Universe Selector   |
+                            |   - US equities              |
+                            |   - India equities           |
+                            |   - Japan equities           |
+                            +--------------+---------------+
+                                           |
+                                           v
+                     +---------------------------------------------+
+                     |   Market-Specific Collector Adapters Layer   |
+                     +---------------------------------------------+
+                     |  US Adapter: Yahoo Finance, SEC EDGAR, FRED |
+                     |  India Adapter: NSE/BSE public feeds, RBI   |
+                     |  Japan Adapter: TSE public feeds, BOJ       |
+                     +---------------------------------------------+
+                                           |
+                                           v
+                     +---------------------------------------------+
+                     |   Abstract Data Collector Interfaces        |
+                     +---------------------------------------------+
+                     |  MarketDataCollector                         |
+                     |  FundamentalDataCollector                    |
+                     |  NewsCollector                               |
+                     |  FilingsCollector                            |
+                     |  OptionsCollector                            |
+                     |  EventCalendarCollector                      |
+                     |  MacroCollector                              |
+                     +---------------------------------------------+
+                                           |
+                                           v
+                     +---------------------------------------------+
+                     |      Feature Engineering / Feature Store    |
+                     +---------------------------------------------+
+                     |  Technical indicators                        |
+                     |  Returns / gap / volatility                  |
+                     |  Options-derived signals                     |
+                     |  News sentiment / event tags                 |
+                     |  Macro / market regime context               |
+                     |  Fundamentals                                |
+                     +---------------------------------------------+
+                                           |
+                                           v
+                     +---------------------------------------------+
+                     |          Prediction Engine                  |
+                     +---------------------------------------------+
+                     |  XGBoost / LightGBM / CatBoost              |
+                     |  Calibration / confidence scoring           |
+                     |  Backtest / baseline evaluation             |
+                     +---------------------------------------------+
+                                           |
+                                           v
+                     +---------------------------------------------+
+                     |           LLM Analyst Layer                 |
+                     +---------------------------------------------+
+                     |  Explain model outputs                       |
+                     |  Summarize top factors                       |
+                     |  Call out risks and confidence               |
+                     +---------------------------------------------+
+                                           |
+                                           v
+                     +---------------------------------------------+
+                     |      Report / Dashboard / Storage           |
+                     +---------------------------------------------+
+                     |  Pre-market report + predictions             |
+                     |  Stored feature / prediction history         |
+                     |  Market-specific UI sections                 |
+                     +---------------------------------------------+
+```
+
+The first market to build is US equities. Once the US adapter layer is validated, the same architecture can be extended to India, Japan, or other markets by adding new collector adapters and market-specific sources.
+
+### Core feature pipeline
+
+- Data collection from public and trusted sources with market-specific adapters:
+  - US: Yahoo Finance, SEC EDGAR, FRED, CBOE/VIX, public news feeds
+  - India: NSE/BSE public data, RBI/FED local macro feeds, company filings, news pages
+  - Japan: TSE/JPX public data, BOJ/METI macro feeds, EDINET filings, local news sources
+- Feature engineering:
+  - technical indicators and momentum
+  - returns, gap, volatility, volume metrics
+  - options-derived signals where available
+  - news sentiment and event tags
+  - market/regime context and macro signals
+- Prediction engine:
+  - next-day direction probability
+  - next-day return / expected move
+  - confidence scoring and calibration
+  - backtesting against simple baselines
+- LLM analyst:
+  - explain why the model produced the forecast
+  - summarize top positive/negative drivers
+  - highlight risks and confidence
+  - avoid asking the LLM to predict raw prices
+
+### What is being built into FinHub
+
+- A modular adapter layer so new markets can be added without changing the core prediction engine
+- A US-first feature collection and storage pipeline for structured market data
+- Traditional ML forecasting on next-day stock behavior
+- Backtesting and performance evaluation for every signal
+- Explainable model output with feature importance and confidence
+- A report/dashboard layer that surfaces probability, risk, and explanation rather than deterministic buy/sell advice
+
+### Future flexibility
+
+The core pipeline is market-agnostic: once the market-specific collectors are implemented, the same feature engineering, prediction, and explanation engine can support additional regions. This keeps the system reusable while allowing each market to plug in its own reliable data sources.
 ## Configuration
 
 Create a `.env` file:
