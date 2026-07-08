@@ -40,6 +40,18 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/analytics/stock":
             self.handle_get_stock_analytics()
             return
+        elif path == "/api/debug/ingestion-status":
+            self.handle_debug_ingestion_status()
+            return
+        elif path == "/api/debug/feature-sample":
+            self.handle_debug_feature_sample()
+            return
+        elif path == "/api/debug/raw-counts":
+            self.handle_debug_raw_counts()
+            return
+        elif path == "/api/debug/backtest-summary":
+            self.handle_debug_backtest_summary()
+            return
         elif path == "/api/news":
             self.handle_get_news()
             return
@@ -445,6 +457,70 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(response_data)
         except Exception as e:
             self.send_json_error(500, str(e))
+
+    def handle_debug_ingestion_status(self):
+        try:
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            data = store.get_debug_ingestion_status()
+            self.send_json_response(200, data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_feature_sample(self):
+        try:
+            parsed_url = urllib.parse.urlparse(self.path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            symbol = (query_params.get("symbol", [""])[0] or "").strip().upper()
+            market = (query_params.get("market", ["US"])[0] or "US").strip().upper()
+            as_of_date = (query_params.get("as_of_date", [""])[0] or None)
+            limit = int(query_params.get("limit", ["20"])[0] or 20)
+
+            if not symbol:
+                self.send_json_error(400, "Missing required query parameter 'symbol'")
+                return
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            data = store.get_feature_sample(market, symbol, as_of_date, limit)
+            self.send_json_response(200, {"feature_sample": data})
+        except ValueError:
+            self.send_json_error(400, "Invalid numeric query parameter for limit")
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_raw_counts(self):
+        try:
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            data = {
+                "raw_counts_by_market": store.get_raw_counts_by_market(),
+                "ingestion_status": store.get_debug_ingestion_status(),
+            }
+            self.send_json_response(200, data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_backtest_summary(self):
+        try:
+            data = {
+                "status": "not_ready",
+                "message": "Backtest summary is not yet available until prediction model training is implemented.",
+            }
+            self.send_json_response(200, data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def send_json_response(self, code, payload):
+        response_data = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(response_data)))
+        self.end_headers()
+        self.wfile.write(response_data)
 
     def send_json_error(self, code, message):
         response_data = json.dumps({"error": message}).encode("utf-8")

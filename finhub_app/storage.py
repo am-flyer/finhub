@@ -607,6 +607,66 @@ class PortfolioStore:
                 for row in rows
             ]
 
+    def get_debug_ingestion_status(self) -> dict:
+        with self.session_factory() as session:
+            summary = {}
+            table_specs = [
+                ("raw_data_records", RawDataRecord, RawDataRecord.retrieved_at),
+                ("raw_news_records", RawNewsRecord, RawNewsRecord.retrieved_at),
+                ("raw_options_records", RawOptionsRecord, RawOptionsRecord.retrieved_at),
+                ("raw_macro_records", RawMacroRecord, RawMacroRecord.retrieved_at),
+                ("raw_event_records", RawEventRecord, RawEventRecord.retrieved_at),
+                ("feature_records", FeatureRecord, FeatureRecord.computed_at),
+            ]
+            for table_name, model, time_column in table_specs:
+                count = session.query(func.count()).select_from(model).scalar() or 0
+                latest_time = session.query(func.max(time_column)).scalar()
+                summary[table_name] = {
+                    "count": int(count),
+                    "latest_timestamp": latest_time.isoformat() if latest_time else None,
+                }
+            return summary
+
+    def get_raw_counts_by_market(self) -> dict:
+        with self.session_factory() as session:
+            rows = (
+                session.query(RawDataRecord.market, func.count())
+                .group_by(RawDataRecord.market)
+                .all()
+            )
+            return {market: int(count) for market, count in rows}
+
+    def get_feature_sample(
+        self,
+        market: str,
+        symbol: str,
+        as_of_date: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        with self.session_factory() as session:
+            query = session.query(FeatureRecord).filter(
+                FeatureRecord.market == market,
+                FeatureRecord.symbol == symbol.upper(),
+            )
+            if as_of_date is not None:
+                query = query.filter(FeatureRecord.as_of_date == as_of_date)
+            rows = query.order_by(FeatureRecord.as_of_date.desc(), FeatureRecord.feature_name.asc()).limit(limit).all()
+            return [
+                {
+                    "market": row.market,
+                    "symbol": row.symbol,
+                    "as_of_date": row.as_of_date,
+                    "feature_name": row.feature_name,
+                    "numeric_value": row.numeric_value,
+                    "text_value": row.text_value,
+                    "source_name": row.source_name,
+                    "source_type": row.source_type,
+                    "raw_payload": json.loads(row.raw_payload) if row.raw_payload else None,
+                    "computed_at": row.computed_at.isoformat() if row.computed_at else None,
+                }
+                for row in rows
+            ]
+
     def get_portfolio_value_history(self) -> list[dict]:
         with self.session_factory() as session:
             holdings = session.query(PortfolioAsset).filter(

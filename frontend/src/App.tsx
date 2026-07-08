@@ -5,6 +5,7 @@ import { AssetFormView } from './components/AssetFormView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { ReportHistoryView } from './components/ReportHistoryView';
 import { PredictionView } from './components/PredictionView';
+import { DeveloperDebugView } from './components/DeveloperDebugView';
 
 interface Position {
   symbol: string;
@@ -35,7 +36,7 @@ interface Report {
 }
 
 export default function App() {
-  const [view, setView] = useState<'dashboard' | 'holdings' | 'add-asset' | 'analytics' | 'history' | 'predictions'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'holdings' | 'add-asset' | 'analytics' | 'history' | 'predictions' | 'developer'>('dashboard');
   const [reportsList, setReportsList] = useState<ReportMeta[]>([]);
   const [positionsList, setPositionsList] = useState<Position[]>([]);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
@@ -265,7 +266,13 @@ export default function App() {
             <i className="fa-solid fa-bolt"></i>
             <span>Predictions</span>
           </div>
-           
+          <div 
+            className={`nav-item ${view === 'developer' ? 'active' : ''}`}
+            onClick={() => setView('developer')}
+          >
+            <i className="fa-solid fa-flask"></i>
+            <span>Developer</span>
+          </div>
           <div 
             className={`nav-item ${view === 'history' ? 'active' : ''}`}
             onClick={() => setView('history')}
@@ -295,6 +302,8 @@ export default function App() {
             {view === 'holdings' && 'My Assets'}
             {view === 'add-asset' && (editingPosition ? `Edit Asset: ${editingPosition.symbol}` : 'Add Asset to Portfolio')}
             {view === 'analytics' && 'Portfolio Performance & Market Events'}
+            {view === 'predictions' && 'Market Predictions'}
+            {view === 'developer' && 'Developer Debug Console'}
             {view === 'history' && 'Daily Pre-Market Report History'}
           </h1>
           {view === 'dashboard' && activeReport && !reportDetailsLoading && (
@@ -371,7 +380,11 @@ export default function App() {
         {view === 'predictions' && (
           <PredictionView positions={positionsList} />
         )}
- 
+
+        {view === 'developer' && (
+          <DeveloperDebugView />
+        )}
+  
         {view === 'history' && (
           <ReportHistoryView 
             reports={reportsList}

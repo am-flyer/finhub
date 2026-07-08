@@ -373,6 +373,7 @@ Developer debug UI:
   - `/api/debug/feature-sample`
   - `/api/debug/backtest-summary`
   - `/api/debug/raw-counts`
+- The current implementation now includes a developer page and debug endpoints so the data readiness layer can be inspected before model training.
 - Keeping debug/diagnostic views separate lets the main prediction UX remain clean while developers inspect model readiness and data quality.
  
 ### Core feature pipeline
