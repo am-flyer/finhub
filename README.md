@@ -196,6 +196,19 @@ A few design principles:
 - Build generic feature engineering around normalized data rows keyed by `(market, symbol, date)`.
 - Keep the new prediction/feature-engineering layer decoupled from the existing report generation logic by using separate database tables and services while sharing the same SQLite database file.
 
+### Prediction UI binding and workflow
+
+The new multi-market prediction feature is exposed on its own UI page and bound to backend services through dedicated API endpoints. It supports:
+- predictions for saved holdings, based on the user's portfolio and market universe.
+- ad-hoc symbol estimates without saving them to the database.
+- market-specific adapters that can later be expanded to India, Japan, and other regions.
+
+The view binds to the data/model through:
+- `GET /api/predictions/holdings` for portfolio-based predictions
+- `GET /api/predictions/estimate?symbol=...` for on-demand symbol estimates
+
+This separation keeps the prediction workflow independent of the existing report system, while still allowing both features to share a common database for persistence and auditing.
+
 ### Decoupled data model
 
 The new feature engineering and prediction functionality will be implemented using independent tables in the common database, for example:

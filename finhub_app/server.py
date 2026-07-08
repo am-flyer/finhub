@@ -8,6 +8,7 @@ from pathlib import Path
 from finhub_app.app import generate_daily_report
 from finhub_app.config import get_settings
 from finhub_app.history import refresh_position_history
+from finhub_app.prediction import predict_holdings, predict_symbol, serialize_prediction
 from finhub_app.storage import PortfolioStore
 
 
@@ -29,6 +30,9 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             return
         elif path == "/api/positions":
             self.handle_list_positions()
+            return
+        elif path == "/api/predictions/holdings":
+            self.handle_get_holdings_predictions()
             return
         elif path == "/api/analytics/portfolio":
             self.handle_get_portfolio_analytics()
@@ -52,6 +56,9 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             return
         elif path == "/api/positions":
             self.handle_upsert_position()
+            return
+        elif path == "/api/predictions/estimate":
+            self.handle_estimate_prediction()
             return
 
         self.send_error(404, "Endpoint not found")
@@ -338,7 +345,46 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(500, str(e))
 
-    def handle_get_news(self):
+        def handle_get_holdings_predictions(self):
+            try:
+                settings = get_settings()
+                store = PortfolioStore(settings.database_url)
+                positions = store.list_positions()
+                symbols = [p.symbol for p in positions if p.scope == "holding"]
+                predictions = [serialize_prediction(pred) for pred in predict_holdings(symbols)]
+
+                response_data = json.dumps(predictions).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response_data)))
+                self.end_headers()
+                self.wfile.write(response_data)
+            except Exception as e:
+                self.send_json_error(500, str(e))
+
+        def handle_estimate_prediction(self):
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                post_data = self.rfile.read(content_length).decode("utf-8")
+                data = json.loads(post_data)
+
+                symbol = (data.get("symbol") or "").strip().upper()
+                market = (data.get("market") or "US").strip().upper()
+                if not symbol:
+                    self.send_json_error(400, "Missing required field 'symbol'")
+                    return
+
+                prediction = serialize_prediction(predict_symbol(symbol, market=market))
+                response_data = json.dumps(prediction).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response_data)))
+                self.end_headers()
+                self.wfile.write(response_data)
+            except Exception as e:
+                self.send_json_error(500, str(e))
+
+        def handle_get_news(self):
         try:
             parsed_url = urllib.parse.urlparse(self.path)
             query_params = urllib.parse.parse_qs(parsed_url.query)

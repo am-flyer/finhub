@@ -4,6 +4,7 @@ import { HoldingsListView } from './components/HoldingsListView';
 import { AssetFormView } from './components/AssetFormView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { ReportHistoryView } from './components/ReportHistoryView';
+import { PredictionView } from './components/PredictionView';
 
 interface Position {
   symbol: string;
@@ -34,7 +35,7 @@ interface Report {
 }
 
 export default function App() {
-  const [view, setView] = useState<'dashboard' | 'holdings' | 'add-asset' | 'analytics' | 'history'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'holdings' | 'add-asset' | 'analytics' | 'history' | 'predictions'>('dashboard');
   const [reportsList, setReportsList] = useState<ReportMeta[]>([]);
   const [positionsList, setPositionsList] = useState<Position[]>([]);
   const [activeReportId, setActiveReportId] = useState<number | null>(null);
@@ -257,7 +258,14 @@ export default function App() {
             <i className="fa-solid fa-chart-line"></i>
             <span>Analytics</span>
           </div>
-
+          <div 
+            className={`nav-item ${view === 'predictions' ? 'active' : ''}`}
+            onClick={() => setView('predictions')}
+          >
+            <i className="fa-solid fa-bolt"></i>
+            <span>Predictions</span>
+          </div>
+           
           <div 
             className={`nav-item ${view === 'history' ? 'active' : ''}`}
             onClick={() => setView('history')}
@@ -360,6 +368,10 @@ export default function App() {
           <AnalyticsView positions={positionsList} />
         )}
 
+        {view === 'predictions' && (
+          <PredictionView positions={positionsList} />
+        )}
+ 
         {view === 'history' && (
           <ReportHistoryView 
             reports={reportsList}
