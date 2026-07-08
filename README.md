@@ -234,6 +234,20 @@ The first extensible ingestion implementation now includes:
 - A US adapter layer using yfinance as the primary open-source market source, with Finnhub and Marketaux as optional news fallbacks.
 - A `RawSourceIngestionManager` that keeps raw ingestion decoupled from existing report generation and makes it easy to add new markets later.
 
+### Feature store and engineering pipeline
+
+The feature store is the next layer on top of raw ingestion. It transforms normalized raw source rows into a consistent set of derived `feature_records` that the prediction engine can consume.
+
+Key design points:
+- `feature_records` are keyed by `(market, symbol, as_of_date, feature_name)` so the same pipeline works for US, India, Japan, or any future market.
+- The feature engineering pipeline is part of the feature store and computes:
+  - technical/price features such as returns, gap percent, volatility, moving averages, and range ratios
+  - news features such as sentiment averages and recent news counts
+  - options-derived signals such as implied volatility averages and open interest summaries
+  - event signals such as earnings/event counts and event-type flags
+  - macro regime indicators from market-level macro data
+- The feature store is intentionally separated from ingestion and prediction so the source adapters can be swapped without changing the derived feature schema.
+
 ### Database strategy
 
 For hobby and local development, SQLite is fine. For a production deployment that may serve many users, use a server-grade SQL database.

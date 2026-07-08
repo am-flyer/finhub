@@ -174,6 +174,22 @@ class RawEventRecord(Base):
     retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class FeatureRecord(Base):
+    __tablename__ = "feature_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    as_of_date: Mapped[str | None] = mapped_column(String(10), index=True, nullable=True)
+    feature_name: Mapped[str] = mapped_column(String(128), index=True)
+    numeric_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_name: Mapped[str] = mapped_column(String(128))
+    source_type: Mapped[str] = mapped_column(String(64))
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 def has_useful_news_content(title: str | None, summary: str | None, url: str | None) -> bool:
     return bool((title or "").strip() and ((summary or "").strip() or (url or "").strip()))
 
@@ -508,22 +524,88 @@ class PortfolioStore:
                 session.commit()
 
     def save_raw_event_record(self, record: RawEventPayload) -> None:
-            with self.session_factory() as session:
-                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
-                session.add(
-                    RawEventRecord(
-                        market=record.market,
-                        symbol=record.symbol.upper() if record.symbol else None,
-                        event_type=record.event_type,
-                        event_date=record.event_date,
-                        description=record.description,
-                        source_name=record.source_name,
-                        source_type=record.source_type,
-                        raw_payload=payload,
-                        retrieved_at=record.retrieved_at or datetime.now(),
-                    )
+        with self.session_factory() as session:
+            payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+            session.add(
+                RawEventRecord(
+                    market=record.market,
+                    symbol=record.symbol.upper() if record.symbol else None,
+                    event_type=record.event_type,
+                    event_date=record.event_date,
+                    description=record.description,
+                    source_name=record.source_name,
+                    source_type=record.source_type,
+                    raw_payload=payload,
+                    retrieved_at=record.retrieved_at or datetime.now(),
                 )
-                session.commit()
+            )
+            session.commit()
+
+    def save_feature_record(self, feature: "FeatureRecord") -> None:
+        with self.session_factory() as session:
+            existing = session.query(FeatureRecord).filter(
+                FeatureRecord.market == feature.market,
+                FeatureRecord.symbol == feature.symbol,
+                FeatureRecord.as_of_date == feature.as_of_date,
+                FeatureRecord.feature_name == feature.feature_name,
+                FeatureRecord.source_name == feature.source_name,
+            ).first()
+            if existing is None:
+                existing = FeatureRecord(
+                    market=feature.market,
+                    symbol=feature.symbol,
+                    as_of_date=feature.as_of_date,
+                    feature_name=feature.feature_name,
+                    numeric_value=feature.numeric_value,
+                    text_value=feature.text_value,
+                    source_name=feature.source_name,
+                    source_type=feature.source_type,
+                    raw_payload=json.dumps(feature.raw_payload, default=str) if feature.raw_payload is not None else None,
+                )
+                session.add(existing)
+            else:
+                existing.numeric_value = feature.numeric_value
+                existing.text_value = feature.text_value
+                existing.source_type = feature.source_type
+                existing.raw_payload = json.dumps(feature.raw_payload, default=str) if feature.raw_payload is not None else None
+            session.commit()
+
+    def clear_feature_records(self, market: str, symbol: str, as_of_date: str | None = None) -> None:
+        with self.session_factory() as session:
+            query = session.query(FeatureRecord).filter(
+                FeatureRecord.market == market,
+                FeatureRecord.symbol == symbol.upper(),
+            )
+            if as_of_date is not None:
+                query = query.filter(FeatureRecord.as_of_date == as_of_date)
+            query.delete(synchronize_session=False)
+            session.commit()
+
+    def get_feature_rows(self, market: str, symbol: str, as_of_date: str | None = None) -> list[dict]:
+        with self.session_factory() as session:
+            query = session.query(FeatureRecord).filter(
+                FeatureRecord.market == market,
+                FeatureRecord.symbol == symbol.upper(),
+            )
+            if as_of_date is not None:
+                query = query.filter(FeatureRecord.as_of_date == as_of_date)
+
+            rows = query.order_by(FeatureRecord.feature_name.asc()).all()
+            return [
+                {
+                    "market": row.market,
+                    "symbol": row.symbol,
+                    "as_of_date": row.as_of_date,
+                    "feature_name": row.feature_name,
+                    "numeric_value": row.numeric_value,
+                    "text_value": row.text_value,
+                    "source_name": row.source_name,
+                    "source_type": row.source_type,
+                    "raw_payload": json.loads(row.raw_payload) if row.raw_payload else None,
+                    "computed_at": row.computed_at.isoformat() if row.computed_at else None,
+                }
+                for row in rows
+            ]
 
     def get_portfolio_value_history(self) -> list[dict]:
         with self.session_factory() as session:
