@@ -627,6 +627,112 @@ class PortfolioStore:
                 }
             return summary
 
+    def get_debug_raw_status(self) -> dict:
+        with self.session_factory() as session:
+            status = {}
+
+            raw_data_count = session.query(func.count()).select_from(RawDataRecord).scalar() or 0
+            raw_news_count = session.query(func.count()).select_from(RawNewsRecord).scalar() or 0
+            raw_options_count = session.query(func.count()).select_from(RawOptionsRecord).scalar() or 0
+            raw_macro_count = session.query(func.count()).select_from(RawMacroRecord).scalar() or 0
+            raw_event_count = session.query(func.count()).select_from(RawEventRecord).scalar() or 0
+
+            status["raw_data_records"] = {
+                "count": int(raw_data_count),
+                "distinct_symbols": int(session.query(func.count(func.distinct(RawDataRecord.symbol))).scalar() or 0),
+                "latest_as_of_date": session.query(func.max(RawDataRecord.as_of_date)).scalar(),
+                "latest_retrieved_at": session.query(func.max(RawDataRecord.retrieved_at)).scalar().isoformat() if session.query(func.max(RawDataRecord.retrieved_at)).scalar() else None,
+                "data_type_counts": {row[0]: int(row[1]) for row in session.query(RawDataRecord.data_type, func.count()).group_by(RawDataRecord.data_type).all()},
+                "source_type_counts": {row[0]: int(row[1]) for row in session.query(RawDataRecord.source_type, func.count()).group_by(RawDataRecord.source_type).all()},
+            }
+
+            status["raw_news_records"] = {
+                "count": int(raw_news_count),
+                "distinct_symbols": int(session.query(func.count(func.distinct(RawNewsRecord.symbol))).scalar() or 0),
+                "latest_published_at": session.query(func.max(RawNewsRecord.published_at)).scalar().isoformat() if session.query(func.max(RawNewsRecord.published_at)).scalar() else None,
+                "source_counts": {row[0]: int(row[1]) for row in session.query(RawNewsRecord.source_name, func.count()).group_by(RawNewsRecord.source_name).all()},
+                "sentiment_average": float(session.query(func.avg(RawNewsRecord.sentiment_score)).scalar() or 0.0),
+            }
+
+            status["raw_options_records"] = {
+                "count": int(raw_options_count),
+                "distinct_symbols": int(session.query(func.count(func.distinct(RawOptionsRecord.symbol))).scalar() or 0),
+                "latest_as_of_date": session.query(func.max(RawOptionsRecord.as_of_date)).scalar(),
+                "field_counts": {row[0]: int(row[1]) for row in session.query(RawOptionsRecord.field_name, func.count()).group_by(RawOptionsRecord.field_name).all()},
+            }
+
+            status["raw_macro_records"] = {
+                "count": int(raw_macro_count),
+                "distinct_macro_names": int(session.query(func.count(func.distinct(RawMacroRecord.macro_name))).scalar() or 0),
+                "latest_as_of_date": session.query(func.max(RawMacroRecord.as_of_date)).scalar(),
+                "macro_counts": {row[0]: int(row[1]) for row in session.query(RawMacroRecord.macro_name, func.count()).group_by(RawMacroRecord.macro_name).all()},
+            }
+
+            status["raw_event_records"] = {
+                "count": int(raw_event_count),
+                "distinct_symbols": int(session.query(func.count(func.distinct(RawEventRecord.symbol))).scalar() or 0),
+                "latest_event_date": session.query(func.max(RawEventRecord.event_date)).scalar().isoformat() if session.query(func.max(RawEventRecord.event_date)).scalar() else None,
+                "event_type_counts": {row[0]: int(row[1]) for row in session.query(RawEventRecord.event_type, func.count()).group_by(RawEventRecord.event_type).all()},
+            }
+
+            return status
+
+    def get_debug_feature_readiness(self) -> dict:
+        with self.session_factory() as session:
+            total_features = session.query(func.count()).select_from(FeatureRecord).scalar() or 0
+            distinct_symbols = session.query(func.count(func.distinct(FeatureRecord.symbol))).scalar() or 0
+            latest_as_of_date = session.query(func.max(FeatureRecord.as_of_date)).scalar()
+            latest_computed_at = session.query(func.max(FeatureRecord.computed_at)).scalar()
+            counts_by_market = {
+                row[0]: int(row[1]) for row in session.query(FeatureRecord.market, func.count()).group_by(FeatureRecord.market).all()
+            }
+            top_feature_names = [
+                {"feature_name": row[0], "count": int(row[1])}
+                for row in session.query(FeatureRecord.feature_name, func.count()).group_by(FeatureRecord.feature_name).order_by(func.count().desc()).limit(20).all()
+            ]
+            latest_symbol_dates = [
+                {"symbol": row[0], "latest_as_of_date": row[1]}
+                for row in session.query(FeatureRecord.symbol, func.max(FeatureRecord.as_of_date)).group_by(FeatureRecord.symbol).order_by(func.max(FeatureRecord.as_of_date).desc()).limit(10).all()
+            ]
+            return {
+                "count": int(total_features),
+                "distinct_symbols": int(distinct_symbols),
+                "latest_as_of_date": latest_as_of_date,
+                "latest_computed_at": latest_computed_at.isoformat() if latest_computed_at else None,
+                "counts_by_market": counts_by_market,
+                "top_feature_names": top_feature_names,
+                "latest_symbol_dates": latest_symbol_dates,
+            }
+
+    def get_raw_data_sample(self, market: str, symbol: str, limit: int = 20) -> list[dict]:
+        with self.session_factory() as session:
+            rows = (
+                session.query(RawDataRecord)
+                .filter(
+                    RawDataRecord.market == market,
+                    RawDataRecord.symbol == symbol.upper(),
+                )
+                .order_by(RawDataRecord.as_of_date.desc(), RawDataRecord.field_name.asc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "market": row.market,
+                    "symbol": row.symbol,
+                    "as_of_date": row.as_of_date,
+                    "data_type": row.data_type,
+                    "field_name": row.field_name,
+                    "numeric_value": row.numeric_value,
+                    "text_value": row.text_value,
+                    "source_name": row.source_name,
+                    "source_type": row.source_type,
+                    "raw_payload": json.loads(row.raw_payload) if row.raw_payload else None,
+                    "retrieved_at": row.retrieved_at.isoformat() if row.retrieved_at else None,
+                }
+                for row in rows
+            ]
+
     def get_raw_counts_by_market(self) -> dict:
         with self.session_factory() as session:
             rows = (

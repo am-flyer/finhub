@@ -7,7 +7,9 @@ from pathlib import Path
 
 from finhub_app.app import generate_daily_report
 from finhub_app.config import get_settings
+from finhub_app.feature_store import create_feature_engineering_pipeline
 from finhub_app.history import refresh_position_history
+from finhub_app.ingestion import create_default_us_ingestion_manager
 from finhub_app.prediction import predict_holdings, predict_symbol, serialize_prediction
 from finhub_app.storage import PortfolioStore
 
@@ -49,6 +51,12 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/debug/raw-counts":
             self.handle_debug_raw_counts()
             return
+        elif path == "/api/debug/readiness":
+            self.handle_debug_readiness()
+            return
+        elif path == "/api/debug/raw-sample":
+            self.handle_debug_raw_sample()
+            return
         elif path == "/api/debug/backtest-summary":
             self.handle_debug_backtest_summary()
             return
@@ -71,6 +79,15 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             return
         elif path == "/api/predictions/estimate":
             self.handle_estimate_prediction()
+            return
+        elif path == "/api/debug/ingest-symbol":
+            self.handle_debug_ingest_symbol()
+            return
+        elif path == "/api/debug/build-features":
+            self.handle_debug_build_features()
+            return
+        elif path == "/api/debug/sync-symbol":
+            self.handle_debug_sync_symbol()
             return
 
         self.send_error(404, "Endpoint not found")
@@ -511,6 +528,145 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
                 "message": "Backtest summary is not yet available until prediction model training is implemented.",
             }
             self.send_json_response(200, data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_readiness(self):
+        try:
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            data = {
+                "readiness": {
+                    "raw_status": store.get_debug_raw_status(),
+                    "feature_readiness": store.get_debug_feature_readiness(),
+                },
+                "ingestion_status": store.get_debug_ingestion_status(),
+                "raw_counts_by_market": store.get_raw_counts_by_market(),
+            }
+            self.send_json_response(200, data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_raw_sample(self):
+        try:
+            parsed_url = urllib.parse.urlparse(self.path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            symbol = (query_params.get("symbol", [""])[0] or "").strip().upper()
+            market = (query_params.get("market", ["US"])[0] or "US").strip().upper()
+            limit = int(query_params.get("limit", ["20"])[0] or 20)
+
+            if not symbol:
+                self.send_json_error(400, "Missing required query parameter 'symbol'")
+                return
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            data = store.get_raw_data_sample(market, symbol, limit)
+            self.send_json_response(200, {"raw_sample": data})
+        except ValueError:
+            self.send_json_error(400, "Invalid numeric query parameter for limit")
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_ingest_symbol(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(post_data or "{}")
+            symbol = (data.get("symbol", "") or "").strip().upper()
+            market = (data.get("market", "US") or "US").strip().upper()
+            start_date = data.get("start_date")
+            end_date = data.get("end_date")
+
+            if not symbol:
+                self.send_json_error(400, "Missing required field 'symbol'")
+                return
+            if market != "US":
+                self.send_json_error(400, "Only US ingestion is currently supported")
+                return
+
+            start_dt = datetime.fromisoformat(start_date) if start_date else None
+            end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            ingestion_manager = create_default_us_ingestion_manager(store)
+            ingestion_manager.ingest_symbol(symbol, market=market, start_date=start_dt, end_date=end_dt)
+            status = store.get_debug_raw_status()
+            self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "raw_status": status})
+        except ValueError as e:
+            self.send_json_error(400, str(e))
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_build_features(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(post_data or "{}")
+            symbol = (data.get("symbol", "") or "").strip().upper()
+            market = (data.get("market", "US") or "US").strip().upper()
+            as_of_date = data.get("as_of_date")
+
+            if not symbol:
+                self.send_json_error(400, "Missing required field 'symbol'")
+                return
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            pipeline = create_feature_engineering_pipeline(store)
+            features = pipeline.build_features_for_symbol(symbol, market=market, as_of_date=as_of_date)
+            self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "feature_count": len(features)})
+        except ValueError as e:
+            self.send_json_error(400, str(e))
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_sync_symbol(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(post_data or "{}")
+            symbol = (data.get("symbol", "") or "").strip().upper()
+            market = (data.get("market", "US") or "US").strip().upper()
+            start_date = data.get("start_date")
+            end_date = data.get("end_date")
+            as_of_date = data.get("as_of_date")
+
+            if not symbol:
+                self.send_json_error(400, "Missing required field 'symbol'")
+                return
+            if market != "US":
+                self.send_json_error(400, "Only US ingestion is currently supported")
+                return
+
+            start_dt = datetime.fromisoformat(start_date) if start_date else None
+            end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            ingestion_manager = create_default_us_ingestion_manager(store)
+            ingestion_manager.ingest_symbol(symbol, market=market, start_date=start_dt, end_date=end_dt)
+            pipeline = create_feature_engineering_pipeline(store)
+            features = pipeline.build_features_for_symbol(symbol, market=market, as_of_date=as_of_date)
+            readiness = {
+                "raw_status": store.get_debug_raw_status(),
+                "feature_readiness": store.get_debug_feature_readiness(),
+            }
+            self.send_json_response(200, {
+                "success": True,
+                "symbol": symbol,
+                "market": market,
+                "feature_count": len(features),
+                "readiness": readiness,
+            })
+        except ValueError as e:
+            self.send_json_error(400, str(e))
         except Exception as e:
             self.send_json_error(500, str(e))
 
