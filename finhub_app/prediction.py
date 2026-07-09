@@ -4,6 +4,8 @@ from typing import List
 
 import yfinance as yf
 
+from finhub_app.modeling import ModelTrainingError, predict_market_symbol
+
 
 @dataclass
 class PredictionResult:
@@ -37,6 +39,31 @@ def predict_symbol(symbol: str, market: str = "US") -> PredictionResult:
     model_version = "baseline-v0.1"
 
     try:
+        store = None
+        from finhub_app.storage import PortfolioStore
+        from finhub_app.config import get_settings
+
+        settings = get_settings()
+        store = PortfolioStore(settings.database_url)
+        artifact = None
+        try:
+            prediction_context = predict_market_symbol(store, symbol, market=market)
+            model_version = prediction_context.get("model_version", "trained")
+            return PredictionResult(
+                symbol=symbol,
+                market=market.upper(),
+                predicted_up_probability=prediction_context["predicted_up_probability"],
+                expected_move_percent=prediction_context["expected_move_percent"],
+                expected_price=prediction_context["expected_price"],
+                confidence=prediction_context["confidence"],
+                top_drivers=[f"Model-based forecast for {symbol}."],
+                risks=["Model predictions are based on historical features and may not reflect future events."],
+                model_version=model_version,
+                source="trained_model",
+            )
+        except ModelTrainingError:
+            pass
+
         ticker = yf.Ticker(symbol)
         history = ticker.history(period="60d", interval="1d")
         close_series = history["Close"].dropna()

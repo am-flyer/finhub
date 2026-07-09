@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable
+from typing import Any, Iterable
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -13,10 +13,15 @@ from finhub_app.storage import PortfolioStore
 
 
 class DataPipelineOrchestrator:
-    def __init__(self, store: PortfolioStore) -> None:
+    def __init__(
+        self,
+        store: PortfolioStore,
+        ingestion_manager: Any | None = None,
+        feature_pipeline: Any | None = None,
+    ) -> None:
         self.store = store
-        self.ingestion_manager = create_default_us_ingestion_manager(store)
-        self.feature_pipeline = create_feature_engineering_pipeline(store)
+        self.ingestion_manager = ingestion_manager or create_default_us_ingestion_manager(store)
+        self.feature_pipeline = feature_pipeline or create_feature_engineering_pipeline(store)
 
     def ingest_symbol(
         self,

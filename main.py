@@ -1,8 +1,13 @@
 import argparse
+import json
+from datetime import datetime
 
 from finhub_app.app import generate_daily_report
 from finhub_app.config import get_settings
 from finhub_app.domain import AssetScope, Position
+from finhub_app.feature_store import create_feature_engineering_pipeline
+from finhub_app.ingestion import create_default_us_ingestion_manager
+from finhub_app.modeling import get_model_status, train_model
 from finhub_app.scheduler import build_scheduler
 from finhub_app.storage import PortfolioStore
 
@@ -26,6 +31,22 @@ def main() -> None:
     if args.command == "serve":
         from finhub_app.server import run_server
         run_server(args.port)
+        return
+
+    if args.command == "ingest-symbol":
+        ingest_symbol(args)
+        return
+
+    if args.command == "build-features":
+        build_features()
+        return
+
+    if args.command == "train-model":
+        train_prediction_model()
+        return
+
+    if args.command == "model-status":
+        report_model_status()
         return
 
     if args.command == "seed-history":
@@ -95,6 +116,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("clean-history", help="Wipe all seeded historical reports, price history, and news records, keeping assets intact")
 
+    ingest = subparsers.add_parser("ingest-symbol", help="Ingest raw market and fundamental data for a symbol")
+    ingest.add_argument("symbol", help="Ticker symbol, for example AAPL")
+    ingest.add_argument("--start-date", default=None, help="Optional start date for data ingestion")
+    ingest.add_argument("--end-date", default=None, help="Optional end date for data ingestion")
+
+    subparsers.add_parser("build-features", help="Build feature records for saved positions using ingested raw data")
+
+    subparsers.add_parser("train-model", help="Train a prediction model from available feature records")
+    subparsers.add_parser("model-status", help="Show the current prediction model status")
+
     return parser
 
 
@@ -135,6 +166,53 @@ def list_positions() -> None:
             f"{position.scope.value}: {position.symbol}{name} - "
             f"{position.quantity:g} share(s){cost}"
         )
+
+
+def ingest_symbol(args: argparse.Namespace) -> None:
+    settings = get_settings()
+    store = PortfolioStore(settings.database_url)
+    store.initialize()
+    ingestion_manager = create_default_us_ingestion_manager(store)
+    ingestion_manager.ingest_symbol(
+        args.symbol,
+        market="US",
+        start_date=datetime.fromisoformat(args.start_date) if args.start_date else None,
+        end_date=datetime.fromisoformat(args.end_date) if args.end_date else None,
+    )
+    print(f"Ingested raw data for {args.symbol.upper()}")
+
+
+def build_features() -> None:
+    settings = get_settings()
+    store = PortfolioStore(settings.database_url)
+    store.initialize()
+    pipeline = create_feature_engineering_pipeline(store)
+    positions = store.list_positions()
+    symbols = sorted({p.symbol.upper() for p in positions if p.symbol.strip()})
+    if not symbols:
+        print("No symbols found in portfolio/watchlist to build features for.")
+        return
+
+    for symbol in symbols:
+        features = pipeline.build_features_for_symbol(symbol, market="US")
+        print(f"Built {len(features)} feature records for {symbol}")
+
+
+def train_prediction_model() -> None:
+    settings = get_settings()
+    store = PortfolioStore(settings.database_url)
+    store.initialize()
+    metadata = train_model(store, market="US")
+    print(f"Trained model {metadata.model_version} on {metadata.sample_count} samples")
+    print(f"Accuracy: {metadata.accuracy:.2%}")
+    if metadata.roc_auc is not None:
+        print(f"ROC AUC: {metadata.roc_auc:.2f}")
+
+
+def report_model_status() -> None:
+    settings = get_settings()
+    status = get_model_status(settings)
+    print(json.dumps(status, indent=2))
 
 
 def run_scheduler() -> None:

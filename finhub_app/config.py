@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     market_timezone: str = Field(default="America/New_York", alias="MARKET_TIMEZONE")
     pre_market_report_hour: int = Field(default=8, alias="PRE_MARKET_REPORT_HOUR")
     pre_market_report_minute: int = Field(default=0, alias="PRE_MARKET_REPORT_MINUTE")
+    model_storage_dir: str = Field(default=".model", alias="MODEL_STORAGE_DIR")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

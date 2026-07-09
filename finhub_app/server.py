@@ -71,6 +71,9 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/debug/backtest-summary":
             self.handle_debug_backtest_summary()
             return
+        elif path == "/api/debug/model-status":
+            self.handle_debug_model_status()
+            return
         elif path == "/api/news":
             self.handle_get_news()
             return
@@ -99,6 +102,9 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             return
         elif path == "/api/debug/sync-symbol":
             self.handle_debug_sync_symbol()
+            return
+        elif path == "/api/debug/train-model":
+            self.handle_debug_train_model()
             return
         elif path == "/api/debug/orchestrate-portfolio":
             self.handle_debug_orchestrate_portfolio()
@@ -558,6 +564,36 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
                 "message": "Backtest summary is not yet available until prediction model training is implemented.",
             }
             self.send_json_response(200, data)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_model_status(self):
+        try:
+            from finhub_app.modeling import get_model_status
+
+            settings = get_settings()
+            status = get_model_status(settings)
+            self.send_json_response(200, status)
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
+    def handle_debug_train_model(self):
+        try:
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            from finhub_app.modeling import train_model
+
+            metadata = train_model(store, market="US")
+            self.send_json_response(200, {
+                "success": True,
+                "model_version": metadata.model_version,
+                "trained_at": metadata.trained_at,
+                "sample_count": metadata.sample_count,
+                "feature_count": metadata.feature_count,
+                "accuracy": metadata.accuracy,
+                "roc_auc": metadata.roc_auc,
+            })
         except Exception as e:
             self.send_json_error(500, str(e))
 

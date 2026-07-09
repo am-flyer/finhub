@@ -418,8 +418,18 @@ class PortfolioStore:
             return False
 
     def save_raw_data_record(self, record: RawDataPoint) -> None:
-            with self.session_factory() as session:
-                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+        with self.session_factory() as session:
+            payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+            existing = session.query(RawDataRecord).filter(
+                RawDataRecord.market == record.market,
+                RawDataRecord.symbol == record.symbol.upper(),
+                RawDataRecord.as_of_date == record.as_of_date,
+                RawDataRecord.data_type == record.data_type,
+                RawDataRecord.field_name == record.field_name,
+                RawDataRecord.source_name == record.source_name,
+                RawDataRecord.source_type == record.source_type,
+            ).first()
+            if existing is None:
                 session.add(
                     RawDataRecord(
                         market=record.market,
@@ -435,7 +445,12 @@ class PortfolioStore:
                         retrieved_at=record.retrieved_at or datetime.now(),
                     )
                 )
-                session.commit()
+            else:
+                existing.numeric_value = record.numeric_value
+                existing.text_value = record.text_value
+                existing.raw_payload = payload
+                existing.retrieved_at = record.retrieved_at or existing.retrieved_at
+            session.commit()
 
     def save_raw_news_record(self, record: RawNewsPayload) -> bool:
             title = (record.title or "").strip()
@@ -501,8 +516,17 @@ class PortfolioStore:
                 return True
 
     def save_raw_options_record(self, record: RawOptionsPayload) -> None:
-            with self.session_factory() as session:
-                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+        with self.session_factory() as session:
+            payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+            existing = session.query(RawOptionsRecord).filter(
+                RawOptionsRecord.market == record.market,
+                RawOptionsRecord.symbol == record.symbol.upper(),
+                RawOptionsRecord.as_of_date == record.as_of_date,
+                RawOptionsRecord.field_name == record.field_name,
+                RawOptionsRecord.source_name == record.source_name,
+                RawOptionsRecord.source_type == record.source_type,
+            ).first()
+            if existing is None:
                 session.add(
                     RawOptionsRecord(
                         market=record.market,
@@ -517,7 +541,12 @@ class PortfolioStore:
                         retrieved_at=record.retrieved_at or datetime.now(),
                     )
                 )
-                session.commit()
+            else:
+                existing.numeric_value = record.numeric_value
+                existing.text_value = record.text_value
+                existing.raw_payload = payload
+                existing.retrieved_at = record.retrieved_at or existing.retrieved_at
+            session.commit()
 
     def save_raw_macro_record(self, record: RawMacroPayload) -> None:
             with self.session_factory() as session:
@@ -620,6 +649,18 @@ class PortfolioStore:
                 }
                 for row in rows
             ]
+
+    def get_latest_feature_as_of_date(self, market: str, symbol: str) -> str | None:
+        with self.session_factory() as session:
+            latest_date = (
+                session.query(func.max(FeatureRecord.as_of_date))
+                .filter(
+                    FeatureRecord.market == market,
+                    FeatureRecord.symbol == symbol.upper(),
+                )
+                .scalar()
+            )
+            return latest_date
 
     def get_debug_ingestion_status(self) -> dict:
         with self.session_factory() as session:
