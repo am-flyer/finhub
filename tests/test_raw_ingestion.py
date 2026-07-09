@@ -816,3 +816,51 @@ def test_ingestion_manager_idempotency(tmp_path):
         assert session.query(RawOptionsRecord).count() == 1
         assert session.query(RawMacroRecord).count() == 1
         assert session.query(RawEventRecord).count() == 1
+
+
+def test_data_pipeline_orchestrator_sync_portfolio_creates_pipeline_jobs(tmp_path):
+    from finhub_app.orchestration import DataPipelineOrchestrator
+    from finhub_app.domain import Position, AssetScope
+
+    class FakeIngestionManager:
+        def __init__(self):
+            self.ingested_symbols = []
+
+        def ingest_symbol(self, symbol: str, market: str = "US", start_date=None, end_date=None):
+            self.ingested_symbols.append(symbol)
+            return {"symbol": symbol, "status": "success"}
+
+    class FakeFeaturePipeline:
+        def __init__(self):
+            self.built_symbols = []
+
+        def build_features_for_symbol(self, symbol: str, market: str = "US", as_of_date: str | None = None):
+            self.built_symbols.append(symbol)
+            return [{"feature_name": "dummy", "numeric_value": 1.0}]
+
+    database_url = f"sqlite:///{tmp_path / 'orchestrator_pipeline_jobs_test.db'}"
+    store = PortfolioStore(database_url)
+    store.initialize()
+
+    # Add holdings and watchlist positions
+    store.upsert_position(Position(symbol="AAPL", name="Apple", quantity=10, scope=AssetScope.HOLDING))
+    store.upsert_position(Position(symbol="MSFT", name="Microsoft", quantity=0, scope=AssetScope.WATCHLIST))
+
+    ingestion_manager = FakeIngestionManager()
+    feature_pipeline = FakeFeaturePipeline()
+    orchestrator = DataPipelineOrchestrator(store, ingestion_manager=ingestion_manager, feature_pipeline=feature_pipeline)
+
+    result = orchestrator.sync_portfolio(market="US", include_watchlist=False)
+
+    assert result["status"] == "success"
+    assert result["completed_symbols"] == ["AAPL"]
+    assert "MSFT" not in result["completed_symbols"]
+    assert ingestion_manager.ingested_symbols == ["AAPL"]
+    assert feature_pipeline.built_symbols == ["AAPL"]
+
+    with store.session_factory() as session:
+        from finhub_app.storage import PipelineJobStatus
+        job = session.query(PipelineJobStatus).filter(PipelineJobStatus.job_type == "sync_portfolio").first()
+        assert job is not None
+        assert job.status == "success"
+        assert job.record_count == 1

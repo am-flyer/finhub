@@ -114,8 +114,8 @@ export const PredictionView: React.FC<PredictionViewProps> = ({ positions }) => 
               Market
               <select value={marketInput} onChange={(event) => setMarketInput(event.target.value)}>
                 <option value="US">US</option>
-                <option value="India">India</option>
-                <option value="Japan">Japan</option>
+                <option value="IN">India</option>
+                <option value="JP">Japan</option>
               </select>
             </label>
             <button type="submit" className="btn btn-primary" disabled={loadingEstimate}>

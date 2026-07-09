@@ -9,9 +9,8 @@ from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from finhub_app.config import get_settings
-from finhub_app.feature_store import create_feature_engineering_pipeline
+from finhub_app.domain import AssetScope
 from finhub_app.history import refresh_position_history
-from finhub_app.ingestion import create_default_us_ingestion_manager
 from finhub_app.orchestration import DataPipelineOrchestrator, build_pipeline_scheduler
 from finhub_app.prediction import predict_holdings, predict_symbol, serialize_prediction
 from finhub_app.storage import PortfolioStore
@@ -415,9 +414,13 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
             positions = store.list_positions()
-            symbols = [p.symbol for p in positions if p.scope == "holding"]
+            symbols = []
+            for p in positions:
+                scope_value = p.scope.value if hasattr(p.scope, "value") else str(p.scope)
+                if scope_value == AssetScope.HOLDING.value:
+                    symbols.append(p.symbol)
             predictions = [serialize_prediction(pred) for pred in predict_holdings(symbols)]
-
+ 
             response_data = json.dumps(predictions).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -689,22 +692,19 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             market = (data.get("market", "US") or "US").strip().upper()
             start_date = data.get("start_date")
             end_date = data.get("end_date")
-
+ 
             if not symbol:
                 self.send_json_error(400, "Missing required field 'symbol'")
                 return
             if market != "US":
                 self.send_json_error(400, "Only US ingestion is currently supported")
                 return
-
-            start_dt = datetime.fromisoformat(start_date) if start_date else None
-            end_dt = datetime.fromisoformat(end_date) if end_date else None
-
+ 
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
             store.initialize()
-            ingestion_manager = create_default_us_ingestion_manager(store)
-            summary = ingestion_manager.ingest_symbol(symbol, market=market, start_date=start_dt, end_date=end_dt)
+            orchestrator = DataPipelineOrchestrator(store)
+            summary = orchestrator.ingest_symbol(symbol, market=market, start_date=start_date, end_date=end_date)
             raw_status = store.get_debug_raw_status()
             self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "summary": summary, "raw_status": raw_status})
         except ValueError as e:
@@ -721,24 +721,49 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             market = (data.get("market", "US") or "US").strip().upper()
             start_date = data.get("start_date")
             end_date = data.get("end_date")
-
-            if not symbol:
-                self.send_json_error(400, "Missing required field 'symbol'")
-                return
+            as_of_date = data.get("as_of_date")
+            include_watchlist = bool(data.get("include_watchlist", False))
+ 
             if market != "US":
                 self.send_json_error(400, "Only US ingestion is currently supported")
                 return
-
-            start_dt = datetime.fromisoformat(start_date) if start_date else None
-            end_dt = datetime.fromisoformat(end_date) if end_date else None
-
+ 
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
             store.initialize()
-            ingestion_manager = create_default_us_ingestion_manager(store)
-            ingestion_manager.ingest_symbol(symbol, market=market, start_date=start_dt, end_date=end_dt)
+            orchestrator = DataPipelineOrchestrator(store)
+ 
+            if symbol:
+                result = orchestrator.sync_symbol(symbol, market=market, start_date=start_date, end_date=end_date, as_of_date=as_of_date)
+                response = {
+                    "success": True,
+                    "symbol": symbol,
+                    "market": market,
+                    "feature_count": result.get("feature_count", 0),
+                }
+            else:
+                result = orchestrator.sync_portfolio(
+                    market=market,
+                    include_watchlist=include_watchlist,
+                    start_date=start_date,
+                    end_date=end_date,
+                    as_of_date=as_of_date,
+                )
+                response = {
+                    "success": True,
+                    "market": market,
+                    "completed_symbols": result.get("completed_symbols", []),
+                    "failed_symbols": result.get("failed_symbols", []),
+                    "feature_counts": result.get("feature_counts", {}),
+                    "status": result.get("status", "unknown"),
+                }
+ 
             status = store.get_debug_raw_status()
-            self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "raw_status": status})
+            response["readiness"] = {
+                "raw_status": status,
+                "feature_readiness": store.get_debug_feature_readiness(),
+            }
+            self.send_json_response(200, response)
         except ValueError as e:
             self.send_json_error(400, str(e))
         except Exception as e:
@@ -752,17 +777,17 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             symbol = (data.get("symbol", "") or "").strip().upper()
             market = (data.get("market", "US") or "US").strip().upper()
             as_of_date = data.get("as_of_date")
-
+ 
             if not symbol:
                 self.send_json_error(400, "Missing required field 'symbol'")
                 return
-
+ 
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
             store.initialize()
-            pipeline = create_feature_engineering_pipeline(store)
-            features = pipeline.build_features_for_symbol(symbol, market=market, as_of_date=as_of_date)
-            self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "feature_count": len(features)})
+            orchestrator = DataPipelineOrchestrator(store)
+            result = orchestrator.build_features_for_symbol(symbol, market=market, as_of_date=as_of_date)
+            self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "feature_count": result.get("feature_count", 0)})
         except ValueError as e:
             self.send_json_error(400, str(e))
         except Exception as e:
@@ -778,24 +803,19 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             start_date = data.get("start_date")
             end_date = data.get("end_date")
             as_of_date = data.get("as_of_date")
-
+ 
             if not symbol:
                 self.send_json_error(400, "Missing required field 'symbol'")
                 return
             if market != "US":
                 self.send_json_error(400, "Only US ingestion is currently supported")
                 return
-
-            start_dt = datetime.fromisoformat(start_date) if start_date else None
-            end_dt = datetime.fromisoformat(end_date) if end_date else None
-
+ 
             settings = get_settings()
             store = PortfolioStore(settings.database_url)
             store.initialize()
-            ingestion_manager = create_default_us_ingestion_manager(store)
-            ingestion_manager.ingest_symbol(symbol, market=market, start_date=start_dt, end_date=end_dt)
-            pipeline = create_feature_engineering_pipeline(store)
-            features = pipeline.build_features_for_symbol(symbol, market=market, as_of_date=as_of_date)
+            orchestrator = DataPipelineOrchestrator(store)
+            result = orchestrator.sync_symbol(symbol, market=market, start_date=start_date, end_date=end_date, as_of_date=as_of_date)
             readiness = {
                 "raw_status": store.get_debug_raw_status(),
                 "feature_readiness": store.get_debug_feature_readiness(),
@@ -804,7 +824,7 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
                 "success": True,
                 "symbol": symbol,
                 "market": market,
-                "feature_count": len(features),
+                "feature_count": result.get("feature_count", 0),
                 "readiness": readiness,
             })
         except ValueError as e:

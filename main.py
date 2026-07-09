@@ -2,13 +2,8 @@ import argparse
 import json
 from datetime import datetime
 
-from finhub_app.app import generate_daily_report
 from finhub_app.config import get_settings
 from finhub_app.domain import AssetScope, Position
-from finhub_app.feature_store import create_feature_engineering_pipeline
-from finhub_app.ingestion import create_default_us_ingestion_manager
-from finhub_app.modeling import get_model_status, train_model
-from finhub_app.scheduler import build_scheduler
 from finhub_app.storage import PortfolioStore
 
 
@@ -78,6 +73,8 @@ def main() -> None:
             print(f" - Deleted {news_deleted} News Records")
             print("Portfolio holding assets remain intact.")
         return
+
+    from finhub_app.app import generate_daily_report
 
     report = generate_daily_report()
     print(report)
@@ -169,6 +166,8 @@ def list_positions() -> None:
 
 
 def ingest_symbol(args: argparse.Namespace) -> None:
+    from finhub_app.ingestion import create_default_us_ingestion_manager
+
     settings = get_settings()
     store = PortfolioStore(settings.database_url)
     store.initialize()
@@ -184,6 +183,8 @@ def ingest_symbol(args: argparse.Namespace) -> None:
 
 
 def build_features() -> None:
+    from finhub_app.feature_store import create_feature_engineering_pipeline
+
     settings = get_settings()
     store = PortfolioStore(settings.database_url)
     store.initialize()
@@ -200,6 +201,8 @@ def build_features() -> None:
 
 
 def train_prediction_model() -> None:
+    from finhub_app.modeling import train_model
+
     settings = get_settings()
     store = PortfolioStore(settings.database_url)
     store.initialize()
@@ -211,12 +214,17 @@ def train_prediction_model() -> None:
 
 
 def report_model_status() -> None:
+    from finhub_app.modeling import get_model_status
+
     settings = get_settings()
     status = get_model_status(settings)
     print(json.dumps(status, indent=2))
 
 
 def run_scheduler() -> None:
+    from finhub_app.app import generate_daily_report
+    from finhub_app.scheduler import build_scheduler
+
     scheduler = build_scheduler(get_settings(), generate_daily_report)
     scheduler.start()
 
