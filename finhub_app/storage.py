@@ -190,6 +190,20 @@ class FeatureRecord(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class PipelineJobStatus(Base):
+    __tablename__ = "pipeline_job_status"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_type: Mapped[str] = mapped_column(String(64), index=True)
+    target_symbol: Mapped[str | None] = mapped_column(String(16), index=True, nullable=True)
+    market: Mapped[str] = mapped_column(String(16), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    record_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 def has_useful_news_content(title: str | None, summary: str | None, url: str | None) -> bool:
     return bool((title or "").strip() and ((summary or "").strip() or (url or "").strip()))
 
@@ -741,6 +755,70 @@ class PortfolioStore:
                 .all()
             )
             return {market: int(count) for market, count in rows}
+
+    def create_pipeline_job_status(
+        self,
+        job_type: str,
+        market: str,
+        target_symbol: str | None = None,
+        status: str = "running",
+        details: str | None = None,
+        record_count: int | None = None,
+    ) -> int:
+        with self.session_factory() as session:
+            job = PipelineJobStatus(
+                job_type=job_type,
+                market=market,
+                target_symbol=target_symbol,
+                status=status,
+                details=details,
+                record_count=record_count,
+            )
+            session.add(job)
+            session.commit()
+            return job.id
+
+    def update_pipeline_job_status(
+        self,
+        job_id: int,
+        status: str,
+        details: str | None = None,
+        record_count: int | None = None,
+    ) -> None:
+        with self.session_factory() as session:
+            job = session.get(PipelineJobStatus, job_id)
+            if job is None:
+                return
+            job.status = status
+            if details is not None:
+                job.details = details
+            if record_count is not None:
+                job.record_count = record_count
+            job.completed_at = datetime.now()
+            session.commit()
+
+    def list_pipeline_job_statuses(self, limit: int = 30) -> list[dict]:
+        with self.session_factory() as session:
+            rows = (
+                session.query(PipelineJobStatus)
+                .order_by(PipelineJobStatus.started_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "id": row.id,
+                    "job_type": row.job_type,
+                    "target_symbol": row.target_symbol,
+                    "market": row.market,
+                    "status": row.status,
+                    "details": row.details,
+                    "record_count": row.record_count,
+                    "started_at": row.started_at.isoformat() if row.started_at else None,
+                    "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                }
+                for row in rows
+            ]
 
     def get_feature_sample(
         self,

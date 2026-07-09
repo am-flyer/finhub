@@ -32,6 +32,22 @@ interface RawRecord {
   retrieved_at: string | null;
 }
 
+interface SchedulerJobStatus {
+  id: string;
+  name: string;
+  next_run_time: string | null;
+  trigger: string;
+  func_ref: string;
+  args: unknown[];
+  kwargs: Record<string, unknown>;
+}
+
+interface SchedulerStatus {
+  scheduler_running: boolean;
+  message?: string;
+  jobs?: SchedulerJobStatus[];
+}
+
 export const DeveloperDebugView: React.FC = () => {
   const [ingestionStatus, setIngestionStatus] = useState<Record<string, IngestionStatusRow> | null>(null);
   const [readinessSummary, setReadinessSummary] = useState<any | null>(null);
@@ -41,6 +57,8 @@ export const DeveloperDebugView: React.FC = () => {
   const [market, setMarket] = useState('US');
   const [featureSample, setFeatureSample] = useState<FeatureRecord[]>([]);
   const [rawSample, setRawSample] = useState<RawRecord[]>([]);
+  const [pipelineJobs, setPipelineJobs] = useState<Array<Record<string, unknown>> | null>(null);
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -48,6 +66,8 @@ export const DeveloperDebugView: React.FC = () => {
   useEffect(() => {
     fetchDebugStatus();
     fetchBacktestSummary();
+    fetchPipelineJobs();
+    fetchSchedulerStatus();
   }, []);
 
   const fetchDebugStatus = async () => {
@@ -81,6 +101,34 @@ export const DeveloperDebugView: React.FC = () => {
     } catch (error) {
       console.error(error);
       setBacktestSummary({ status: 'error', message: 'Unable to load backtest summary.' });
+    }
+  };
+
+  const fetchPipelineJobs = async () => {
+    try {
+      const res = await fetch('/api/debug/pipeline-jobs');
+      if (!res.ok) {
+        throw new Error('Failed to load pipeline jobs');
+      }
+      const data = await res.json();
+      setPipelineJobs(data.pipeline_jobs || []);
+    } catch (error) {
+      console.error(error);
+      setPipelineJobs([]);
+    }
+  };
+
+  const fetchSchedulerStatus = async () => {
+    try {
+      const res = await fetch('/api/debug/scheduler-status');
+      if (!res.ok) {
+        throw new Error('Failed to load scheduler status');
+      }
+      const data = await res.json();
+      setSchedulerStatus(data || null);
+    } catch (error) {
+      console.error(error);
+      setSchedulerStatus({ scheduler_running: false, message: 'Unable to load scheduler status.' });
     }
   };
 
@@ -136,8 +184,8 @@ export const DeveloperDebugView: React.FC = () => {
     }
   };
 
-  const performDebugAction = async (action: 'ingest' | 'build' | 'sync') => {
-    if (!symbol.trim()) {
+  const performDebugAction = async (action: 'ingest' | 'build' | 'sync' | 'orchestrate') => {
+    if (!symbol.trim() && action !== 'orchestrate') {
       setErrorMessage('Symbol is required for debug actions.');
       return;
     }
@@ -146,12 +194,16 @@ export const DeveloperDebugView: React.FC = () => {
     setErrorMessage(null);
     setActionMessage(null);
     try {
-      const body = JSON.stringify({ symbol: symbol.trim().toUpperCase(), market });
+      const body = action === 'orchestrate'
+        ? JSON.stringify({ market, include_watchlist: true })
+        : JSON.stringify({ symbol: symbol.trim().toUpperCase(), market });
       const path = action === 'ingest'
         ? '/api/debug/ingest-symbol'
         : action === 'build'
         ? '/api/debug/build-features'
-        : '/api/debug/sync-symbol';
+        : action === 'sync'
+        ? '/api/debug/sync-symbol'
+        : '/api/debug/orchestrate-portfolio';
 
       const res = await fetch(path, {
         method: 'POST',
@@ -163,9 +215,14 @@ export const DeveloperDebugView: React.FC = () => {
         throw new Error(err.error || `Failed to ${action} data`);
       }
       const data = await res.json();
-      const completedStatus = data.feature_count !== undefined ? `generated ${data.feature_count} features` : data.success ? 'completed' : 'done';
+      const completedStatus = data.feature_count !== undefined
+        ? `generated ${data.feature_count} features`
+        : data.success !== undefined
+        ? 'completed'
+        : 'done';
       setActionMessage(`Action completed: ${action} (${completedStatus})`);
       await fetchDebugStatus();
+      await fetchPipelineJobs();
     } catch (error: any) {
       console.error(error);
       setErrorMessage(error.message || 'Unable to complete debug action.');
@@ -268,8 +325,73 @@ export const DeveloperDebugView: React.FC = () => {
             <p>No raw count data available.</p>
           )}
         </div>
-      </section>
-
+        <div className="prediction-card">
+          <h3>Pipeline Job History</h3>
+          {pipelineJobs ? (
+            <div className="debug-table-wrap" style={{ maxHeight: '260px', overflowY: 'auto' }}>
+              <table className="debug-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Started At</th>
+                    <th>Completed At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pipelineJobs.length ? (
+                    pipelineJobs.map((job: any) => (
+                      <tr key={job.id}>
+                        <td>{job.id}</td>
+                        <td>{job.job_type || 'N/A'}</td>
+                        <td>{job.status || 'N/A'}</td>
+                        <td>{job.started_at || 'N/A'}</td>
+                        <td>{job.completed_at || 'N/A'}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan={5}>No pipeline job records available.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p>No pipeline job data available.</p>
+          )}
+        </div>
+        <div className="prediction-card">
+          <h3>Scheduler Status</h3>
+          {schedulerStatus ? (
+            <div className="debug-table-wrap">
+              <table className="debug-table">
+                <tbody>
+                  <tr><td>Scheduler running</td><td>{schedulerStatus.scheduler_running ? 'Yes' : 'No'}</td></tr>
+                  {schedulerStatus.message && (
+                    <tr><td>Message</td><td>{schedulerStatus.message}</td></tr>
+                  )}
+                  {schedulerStatus.jobs && schedulerStatus.jobs.length > 0 && (
+                    <tr>
+                      <td>Scheduled jobs</td>
+                      <td>
+                        <ul className="debug-list">
+                          {schedulerStatus.jobs.map((job) => (
+                            <li key={job.id}>
+                              <strong>{job.id}</strong>: next run {job.next_run_time || 'unknown'}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p>Loading scheduler details...</p>
+          )}
+        </div>
+      </section> 
       <section className="debug-grid">
         <div className="prediction-card prediction-card-full">
           <h3>Developer Actions</h3>
@@ -301,10 +423,13 @@ export const DeveloperDebugView: React.FC = () => {
               <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('sync')} disabled={loading}>
                 {loading ? 'Working...' : 'Sync Raw + Features'}
               </button>
+              <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('orchestrate')} disabled={loading}>
+                {loading ? 'Working...' : 'Orchestrate Portfolio Sync'}
+              </button>
             </div>
           </div>
           <p style={{ marginTop: '0.75rem', fontSize: '0.95rem', color: '#7a7a7a' }}>
-            Use these actions to fetch raw data for a symbol and generate feature vectors for inspection.
+            Use these actions to fetch raw data for a symbol and generate feature vectors for inspection. Portfolio orchestration runs the scheduled pipeline flow for market readiness.
           </p>
         </div>
       </section>

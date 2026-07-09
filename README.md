@@ -266,7 +266,7 @@ The next development work is focused on turning the debug console into a true da
 - Add backend ready checks for raw ingestion health, freshness, and completeness across markets.
 - Add backend ready checks for feature generation coverage, freshness, and expected feature set completeness.
 - Extend the developer/admin UI with controlled seed/sync actions for manual refresh, reprocessing, and status inspection.
-- Add job orchestration or scheduler wiring so ingestion and feature generation run automatically, with the UI showing current status rather than being the only trigger.
+- Add job orchestration or scheduler wiring so ingestion and feature generation run automatically, with the UI showing current status rather than being the only trigger. (Now implemented: the web server starts a background pipeline scheduler and exposes scheduler status via `/api/debug/scheduler-status`.)
 - Harden the data pipeline for production traffic by using a DB-ready adapter layer and removing reliance on SQLite for high-scale workloads.
 - Implement sector-relative and market-relative benchmark ingestion, plus richer options analytics (IV rank, skew, expiry-level metrics).
 - Advanced fundamental event extraction from filings/news for granular surprises, guidance text, and analyst rating metadata.
@@ -351,6 +351,28 @@ Current code supports DB selection via `DATABASE_URL`, and the new prediction ta
 
 ### Scale and extensibility
  
+
+## What's not yet fully covered (expanded)
+
+In addition to the items previously described under "Not yet fully covered", the following developer/run-time gaps should be addressed before a production-quality deployment:
+
+- Full multi-market adapters: India and Japan adapters are high-level placeholders; collectors and normalization logic for those markets remain to be implemented and tested against local data sources.
+- Rich options analytics: IV rank/percentile, expiry-level greeks aggregation, and chain-level skew metrics are not yet implemented.
+- Sector and peer ingestion: sector and peer index data used for sector-relative features and benchmarking are not yet automated.
+- Packaging/runtime compatibility: requirements.txt includes packages that need specific Python versions or prebuilt wheels (e.g., pydantic_core, numba). Decide on a constrained Python runtime for CI and developer venvs (recommended: 3.11/3.12) and standardize on it.
+- Production scheduler/back-end: APScheduler + in-process scheduling is fine for development, but a production deployment should use an external worker (e.g., Celery, Prefect, or Airflow) or a hosted job runner to provide resilience and horizontal scaling.
+
+---
+
+Please review these notes. If they look good, the next implementation steps are:
+
+1. Decide the runtime strategy (pin Python version + full install of requirements, or accept lazy-import developer mode). If choosing to pin Python, add instructions and CI checks.
+2. Harden the debug UI to surface clear messages when storage or collectors are unavailable (so non-technical users don't see raw exceptions).
+3. Add richer pipeline job logs and a per-job details view in the Developer Debug UI.
+4. Validate scheduler/job orchestration end-to-end on a machine with full requirements installed and enable retry/failure handling in the orchestrator.
+5. Implement the remaining feature coverage items (options analytics, sector benchmarking, multi-market adapter tests).
+
+I'll wait for your review and approval before proceeding with the next set of code changes (UI polish, richer job logs, or installing missing runtime deps).
 The design is intended to scale from a small watchlist to thousands of stocks across multiple exchanges by:
 - using batch-friendly market adapters that can collect symbols in groups and cache results when possible
 - storing every raw input source with metadata so data quality can be compared across providers and markets
@@ -384,6 +406,8 @@ Developer debug UI:
   - `/api/debug/feature-sample`
   - `/api/debug/backtest-summary`
   - `/api/debug/raw-counts`
+  - `/api/debug/pipeline-jobs`
+  - `/api/debug/scheduler-status`
 - The current implementation now includes a developer page and debug endpoints so the data readiness layer can be inspected before model training.
 - Keeping debug/diagnostic views separate lets the main prediction UX remain clean while developers inspect model readiness and data quality.
  
