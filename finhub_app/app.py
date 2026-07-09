@@ -14,7 +14,6 @@ from finhub_app.processing import (
     calculate_impact_scores,
     deduplicate_news,
 )
-from finhub_app.reporting import GeminiReportGenerator, OpenAIReportGenerator
 from finhub_app.storage import PortfolioStore
 
 
@@ -60,19 +59,29 @@ def generate_daily_report() -> str:
         if not gemini_key:
             content = "GEMINI_API_KEY or GOOGLE_API_KEY is missing. Add one to .env before generating reports."
         else:
-            content = GeminiReportGenerator(
-                api_key=gemini_key,
-                model=settings.gemini_model,
-            ).generate(context)
+            try:
+                from finhub_app.reporting import GeminiReportGenerator
+            except ImportError as exc:
+                content = f"Gemini report generation is unavailable because optional dependencies are missing: {exc}"
+            else:
+                content = GeminiReportGenerator(
+                    api_key=gemini_key,
+                    model=settings.gemini_model,
+                ).generate(context)
 
     elif provider == "openai":
         if not settings.openai_api_key:
             content = "OPENAI_API_KEY is missing. Add it to .env before generating reports."
         else:
-            content = OpenAIReportGenerator(
-                api_key=settings.openai_api_key,
-                model=settings.openai_model,
-            ).generate(context)
+            try:
+                from finhub_app.reporting import OpenAIReportGenerator
+            except ImportError as exc:
+                content = f"OpenAI report generation is unavailable because optional dependencies are missing: {exc}"
+            else:
+                content = OpenAIReportGenerator(
+                    api_key=settings.openai_api_key,
+                    model=settings.openai_model,
+                ).generate(context)
     else:
         content = f"Unsupported LLM_PROVIDER '{settings.llm_provider}'. Use 'gemini' or 'openai'."
 

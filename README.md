@@ -289,7 +289,7 @@ The new multi-market prediction feature is exposed on its own UI page and bound 
 
 The view binds to the data/model through:
 - `GET /api/predictions/holdings` for portfolio-based predictions
-- `GET /api/predictions/estimate?symbol=...` for on-demand symbol estimates
+- `POST /api/predictions/estimate` for on-demand symbol estimates with JSON body `{ symbol, market }`
 
 This separation keeps the prediction workflow independent of the existing report system, while still allowing both features to share a common database for persistence and auditing.
 
@@ -375,6 +375,7 @@ To seed the database with real data and run the raw ingestion and feature engine
 
 5. Verify readiness and debug the pipeline.
    - `python main.py serve --port 8000`
+   - Open `http://localhost:8000` in your browser and navigate to the Developer Debug page.
    - Inspect debug endpoints such as `/api/debug/ingestion-status` and `/api/debug/feature-sample`.
 
 Note:
