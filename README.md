@@ -349,6 +349,39 @@ Example database URLs:
 
 Current code supports DB selection via `DATABASE_URL`, and the new prediction tables will be added in a way that does not change the existing report workflow.
 
+## Production data seeding and pipeline bootstrap
+
+To seed the database with real data and run the raw ingestion and feature engineering pipeline, use the CLI commands in `main.py`.
+
+1. Configure environment variables in `.env` or your runtime environment.
+   - `DATABASE_URL` (for example `sqlite:///finhub.db` or a PostgreSQL URL)
+   - `FINNHUB_API_KEY` for optional Finnhub news/fundamentals data
+   - `MARKETAUX_API_KEY` for optional Marketaux news data
+   - `FRED_API_KEY` for optional macro data sources
+   - optionally `OPENAI_API_KEY` or `GEMINI_API_KEY` for the report/LLM layer
+
+2. Add portfolio holdings or watchlist symbols.
+   - `python main.py add-holding AAPL --quantity 10 --average-cost 150 --name "Apple Inc."`
+   - `python main.py add-watchlist MSFT --name "Microsoft Corp."`
+
+3. Ingest raw data for each symbol.
+   - `python main.py ingest-symbol AAPL`
+   - Optionally use `--start-date YYYY-MM-DD` and `--end-date YYYY-MM-DD` to limit the ingestion window.
+   - This populates raw pipeline tables such as `raw_data_records`, `raw_news_records`, `raw_filing_records`, `raw_options_records`, `raw_macro_records`, and `raw_event_records`.
+
+4. Build feature records from ingested raw data.
+   - `python main.py build-features`
+   - This processes all saved symbols and writes derived rows to `feature_records`.
+
+5. Verify readiness and debug the pipeline.
+   - `python main.py serve --port 8000`
+   - Inspect debug endpoints such as `/api/debug/ingestion-status` and `/api/debug/feature-sample`.
+
+Note:
+- `seed-history` is useful for seeding legacy price and news history used by the report engine, but the core prediction pipeline should be bootstrapped through `ingest-symbol` and `build-features`.
+- The current raw ingestion implementation supports US equities. Future markets require additional adapter implementations.
+- For production deployments, use a server-grade SQL database and keep API keys secure in environment variables.
+
 ### Scale and extensibility
  
 
