@@ -73,6 +73,9 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/debug/model-status":
             self.handle_debug_model_status()
             return
+        elif path == "/api/debug/model-info":
+            self.handle_debug_model_info()
+            return
         elif path == "/api/news":
             self.handle_get_news()
             return
@@ -579,6 +582,71 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
             self.send_json_response(200, status)
         except Exception as e:
             self.send_json_error(500, str(e))
+
+    def handle_debug_model_info(self):
+        """Return dynamic model information with explanation."""
+        try:
+            from finhub_app.modeling import get_model_status
+
+            settings = get_settings()
+            status = get_model_status(settings)
+            
+            if status.get("status") == "ready" and status.get("metadata"):
+                meta = status["metadata"]
+                model_version = meta.get("model_version", "unknown")
+                trained_at = meta.get("trained_at", "unknown")
+                accuracy = meta.get("accuracy", 0.0)
+                roc_auc = meta.get("roc_auc")
+                sample_count = meta.get("sample_count", 0)
+                
+                # Determine model type and reasoning
+                if "trained" in model_version:
+                    model_type = "Logistic Regression"
+                    explanation = (
+                        "Trained model using your portfolio's historical features. "
+                        f"Trained on {sample_count} samples with {accuracy:.1%} accuracy. "
+                        "Uses past price movements, volatility, and news sentiment to predict "
+                        "next-day direction."
+                    )
+                else:
+                    model_type = "Baseline (Historical)"
+                    explanation = (
+                        "Using yfinance historical price data fallback. "
+                        "No trained model available yet. To improve predictions, "
+                        "ingest data for symbols and train a model via Developer console."
+                    )
+                
+                response = {
+                    "model_type": model_type,
+                    "status": "ready",
+                    "version": model_version,
+                    "trained_at": trained_at,
+                    "accuracy": float(accuracy),
+                    "roc_auc": float(roc_auc) if roc_auc else None,
+                    "sample_count": sample_count,
+                    "explanation": explanation,
+                }
+            else:
+                response = {
+                    "model_type": "Baseline (Historical)",
+                    "status": "not_trained",
+                    "version": "baseline-v0.1",
+                    "explanation": (
+                        "Using yfinance historical price data as fallback. "
+                        "No trained model yet. To enable trained predictions: "
+                        "1) Ingest symbol data via /api/debug/ingest-symbol, "
+                        "2) Build features via /api/debug/build-features, "
+                        "3) Train model via /api/debug/train-model"
+                    ),
+                }
+            
+            self.send_json_response(200, response)
+        except Exception as e:
+            self.send_json_response(200, {
+                "model_type": "Baseline (Historical)",
+                "status": "unavailable",
+                "explanation": f"Could not determine model status: {e}",
+            })
 
     def handle_debug_train_model(self):
         try:

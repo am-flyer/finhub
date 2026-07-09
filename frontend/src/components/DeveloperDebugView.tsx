@@ -49,6 +49,7 @@ interface SchedulerStatus {
 }
 
 export const DeveloperDebugView: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'readiness' | 'ingestion' | 'markets' | 'operations'>('readiness');
   const [ingestionStatus, setIngestionStatus] = useState<Record<string, IngestionStatusRow> | null>(null);
   const [readinessSummary, setReadinessSummary] = useState<any | null>(null);
   const [rawCounts, setRawCounts] = useState<Record<string, number> | null>(null);
@@ -215,11 +216,16 @@ export const DeveloperDebugView: React.FC = () => {
         throw new Error(err.error || `Failed to ${action} data`);
       }
       const data = await res.json();
-      const completedStatus = data.feature_count !== undefined
-        ? `generated ${data.feature_count} features`
-        : data.success !== undefined
-        ? 'completed'
-        : 'done';
+      let completedStatus = 'completed';
+      if (action === 'orchestrate') {
+        const completed = Array.isArray(data.completed_symbols) ? data.completed_symbols.length : 0;
+        const failed = Array.isArray(data.failed_symbols) ? data.failed_symbols.length : 0;
+        completedStatus = `completed ${completed} symbols${failed ? `, ${failed} failed` : ''}`;
+      } else if (data.feature_count !== undefined) {
+        completedStatus = `generated ${data.feature_count} features`;
+      } else if (data.success !== undefined) {
+        completedStatus = 'completed successfully';
+      }
       setActionMessage(`Action completed: ${action} (${completedStatus})`);
       await fetchDebugStatus();
       await fetchPipelineJobs();
@@ -235,316 +241,384 @@ export const DeveloperDebugView: React.FC = () => {
     <div className="developer-debug-view">
       <div className="prediction-header">
         <div>
-          <h2>Developer Debug Console</h2>
-          <p>Inspect ingestion status, raw data coverage, feature samples, and model readiness diagnostics.</p>
+          <h2>Developer Console</h2>
+          <p>Monitor data ingestion, feature engineering, and model training pipeline.</p>
         </div>
       </div>
 
       {errorMessage && <p className="text-error">{errorMessage}</p>}
       {actionMessage && <p className="text-success">{actionMessage}</p>}
 
-      <section className="debug-grid">
-        <div className="prediction-card">
-          <h3>Readiness Summary</h3>
-          {loading && !readinessSummary ? (
-            <p>Loading readiness data...</p>
-          ) : readinessSummary ? (
-            <div className="debug-table-wrap">
-              <table className="debug-table">
-                <thead>
-                  <tr><th colSpan={2}>Feature Readiness</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Total feature rows</td><td>{readinessSummary.feature_readiness?.count ?? 'N/A'}</td></tr>
-                  <tr><td>Distinct symbols</td><td>{readinessSummary.feature_readiness?.distinct_symbols ?? 'N/A'}</td></tr>
-                  <tr><td>Latest feature date</td><td>{readinessSummary.feature_readiness?.latest_as_of_date ?? 'N/A'}</td></tr>
-                  <tr><td>Latest feature computed</td><td>{readinessSummary.feature_readiness?.latest_computed_at ?? 'N/A'}</td></tr>
-                </tbody>
-              </table>
-              <div className="debug-table-wrap" style={{ marginTop: '1rem' }}>
+      {/* Tab Navigation */}
+      <div className="prediction-tabs">
+        <button
+          className={`prediction-tab ${activeTab === 'readiness' ? 'active' : ''}`}
+          onClick={() => setActiveTab('readiness')}
+        >
+          Readiness Summary
+        </button>
+        <button
+          className={`prediction-tab ${activeTab === 'ingestion' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ingestion')}
+        >
+          Ingestion Status
+        </button>
+        <button
+          className={`prediction-tab ${activeTab === 'markets' ? 'active' : ''}`}
+          onClick={() => setActiveTab('markets')}
+        >
+          Raw Count by Markets
+        </button>
+        <button
+          className={`prediction-tab ${activeTab === 'operations' ? 'active' : ''}`}
+          onClick={() => setActiveTab('operations')}
+        >
+          Operations & Explorers
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="prediction-content">
+        {/* Tab 1: Readiness Summary */}
+        {activeTab === 'readiness' && (
+          <div className="prediction-card full-width">
+            <h3>Readiness Summary</h3>
+            <p className="section-description">
+              Feature readiness shows your feature engineering pipeline status. Raw data summary displays all ingested data types. Both are essential for model training readiness.
+            </p>
+
+            {loading && !readinessSummary ? (
+              <p>Loading readiness data...</p>
+            ) : readinessSummary ? (
+              <div className="readiness-grids">
+                <div className="readiness-grid-item">
+                  <h4>Feature Readiness</h4>
+                  <p className="grid-description">Extracted features from raw data, ready for model training.</p>
+                  <div className="debug-table-wrap">
+                    <table className="debug-table">
+                      <tbody>
+                        <tr><td>Total Feature Rows</td><td><strong>{readinessSummary.feature_readiness?.count ?? 'N/A'}</strong></td></tr>
+                        <tr><td>Distinct Symbols</td><td><strong>{readinessSummary.feature_readiness?.distinct_symbols ?? 'N/A'}</strong></td></tr>
+                        <tr><td>Latest Feature Date</td><td>{readinessSummary.feature_readiness?.latest_as_of_date ?? 'N/A'}</td></tr>
+                        <tr><td>Latest Computed</td><td>{readinessSummary.feature_readiness?.latest_computed_at ?? 'N/A'}</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="readiness-grid-item">
+                  <h4>Raw Data Summary</h4>
+                  <p className="grid-description">All ingested raw data organized by type. Use for debugging data completeness.</p>
+                  <div className="debug-table-wrap">
+                    <table className="debug-table">
+                      <tbody>
+                        <tr><td>Raw Data Rows</td><td><strong>{readinessSummary.raw_status?.raw_data_records?.count ?? 'N/A'}</strong></td></tr>
+                        <tr><td>Raw News Rows</td><td><strong>{readinessSummary.raw_status?.raw_news_records?.count ?? 'N/A'}</strong></td></tr>
+                        <tr><td>Raw Options Rows</td><td><strong>{readinessSummary.raw_status?.raw_options_records?.count ?? 'N/A'}</strong></td></tr>
+                        <tr><td>Raw Macro Rows</td><td><strong>{readinessSummary.raw_status?.raw_macro_records?.count ?? 'N/A'}</strong></td></tr>
+                        <tr><td>Raw Event Rows</td><td><strong>{readinessSummary.raw_status?.raw_event_records?.count ?? 'N/A'}</strong></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p>No readiness data available.</p>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Ingestion Status */}
+        {activeTab === 'ingestion' && (
+          <div className="prediction-card full-width">
+            <h3>Ingestion Status</h3>
+            <p className="section-description">
+              Status of all ingested tables showing record counts and last update timestamp. Use to verify data is flowing through the pipeline.
+            </p>
+
+            {loading && !ingestionStatus ? (
+              <p>Loading ingestion status...</p>
+            ) : (
+              <div className="debug-table-wrap">
                 <table className="debug-table">
                   <thead>
-                    <tr><th colSpan={2}>Raw Data Summary</th></tr>
+                    <tr>
+                      <th>Table</th>
+                      <th>Row Count</th>
+                      <th>Latest Timestamp</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    <tr><td>Raw data rows</td><td>{readinessSummary.raw_status?.raw_data_records?.count ?? 'N/A'}</td></tr>
-                    <tr><td>Raw news rows</td><td>{readinessSummary.raw_status?.raw_news_records?.count ?? 'N/A'}</td></tr>
-                    <tr><td>Raw options rows</td><td>{readinessSummary.raw_status?.raw_options_records?.count ?? 'N/A'}</td></tr>
-                    <tr><td>Raw macro rows</td><td>{readinessSummary.raw_status?.raw_macro_records?.count ?? 'N/A'}</td></tr>
-                    <tr><td>Raw event rows</td><td>{readinessSummary.raw_status?.raw_event_records?.count ?? 'N/A'}</td></tr>
+                    {ingestionStatus ? (
+                      Object.entries(ingestionStatus).map(([table, row]) => (
+                        <tr key={table}>
+                          <td><strong>{table}</strong></td>
+                          <td>{row.count}</td>
+                          <td>{row.latest_timestamp || 'N/A'}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr><td colSpan={3}>No ingestion data available.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
-            </div>
-          ) : (
-            <p>No readiness data available.</p>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
-        <div className="prediction-card">
-          <h3>Ingestion Status</h3>
-          {loading && !ingestionStatus ? (
-            <p>Loading ingestion status...</p>
-          ) : (
-            <div className="debug-table-wrap">
-              <table className="debug-table">
-                <thead>
-                  <tr>
-                    <th>Table</th>
-                    <th>Row Count</th>
-                    <th>Latest Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ingestionStatus ? (
-                    Object.entries(ingestionStatus).map(([table, row]) => (
-                      <tr key={table}>
-                        <td>{table}</td>
-                        <td>{row.count}</td>
-                        <td>{row.latest_timestamp || 'N/A'}</td>
+        {/* Tab 3: Raw Count by Markets */}
+        {activeTab === 'markets' && (
+          <div className="prediction-card full-width">
+            <h3>Raw Data Distribution</h3>
+            <p className="section-description">
+              Raw record count by market. Higher counts indicate more data available for feature engineering and model training.
+            </p>
+
+            {rawCounts ? (
+              <div className="markets-grid">
+                {Object.entries(rawCounts).map(([marketKey, count]) => (
+                  <div key={marketKey} className="market-card">
+                    <div className="market-name">{marketKey}</div>
+                    <div className="market-count">{count.toLocaleString()}</div>
+                    <div className="market-label">records</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p>No raw count data available.</p>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: Operations & Explorers */}
+        {activeTab === 'operations' && (
+          <div className="prediction-card full-width">
+            <h3>Developer Operations</h3>
+            <p className="section-description">
+              Execute pipeline actions and explore feature/raw data samples. Actions: ingest symbols, build features, sync data, orchestrate portfolio.
+            </p>
+
+            {/* Developer Actions */}
+            <div className="debug-section">
+              <h4>Quick Actions</h4>
+              <div className="prediction-form">
+                <label>
+                  Symbol
+                  <input
+                    type="text"
+                    value={symbol}
+                    onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+                    placeholder="AAPL"
+                  />
+                </label>
+                <label>
+                  Market
+                  <select value={market} onChange={(event) => setMarket(event.target.value)}>
+                    <option value="US">US</option>
+                    <option value="IN">India</option>
+                    <option value="JP">Japan</option>
+                  </select>
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" type="button" onClick={() => performDebugAction('ingest')} disabled={loading}>
+                    {loading ? 'Working...' : 'Ingest Raw Data'}
+                  </button>
+                  <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('build')} disabled={loading}>
+                    {loading ? 'Working...' : 'Build Features'}
+                  </button>
+                  <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('sync')} disabled={loading}>
+                    {loading ? 'Working...' : 'Sync Raw + Features'}
+                  </button>
+                  <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('orchestrate')} disabled={loading}>
+                    {loading ? 'Working...' : 'Orchestrate Portfolio'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Scheduler Status */}
+            <div className="debug-section">
+              <h4>Scheduler Status</h4>
+              {schedulerStatus ? (
+                <div className="debug-table-wrap">
+                  <table className="debug-table">
+                    <tbody>
+                      <tr><td>Scheduler Running</td><td><strong>{schedulerStatus.scheduler_running ? '✓ Active' : '✗ Inactive'}</strong></td></tr>
+                      {schedulerStatus.message && (
+                        <tr><td>Message</td><td>{schedulerStatus.message}</td></tr>
+                      )}
+                      {schedulerStatus.jobs && schedulerStatus.jobs.length > 0 && (
+                        <tr>
+                          <td>Scheduled Jobs ({schedulerStatus.jobs.length})</td>
+                          <td>
+                            <ul className="debug-list">
+                              {schedulerStatus.jobs.map((job) => (
+                                <li key={job.id}>
+                                  <strong>{job.id}</strong>: {job.next_run_time || 'No next run'}
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>Loading scheduler details...</p>
+              )}
+            </div>
+
+            {/* Pipeline Job History */}
+            <div className="debug-section">
+              <h4>Pipeline Job History</h4>
+              {pipelineJobs ? (
+                <div className="debug-table-wrap" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  <table className="debug-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Started At</th>
+                        <th>Completed At</th>
                       </tr>
-                    ))
-                  ) : (
-                    <tr><td colSpan={3}>No ingestion data available.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {pipelineJobs.length ? (
+                        pipelineJobs.map((job: any) => (
+                          <tr key={job.id}>
+                            <td>{job.id}</td>
+                            <td>{job.job_type || 'N/A'}</td>
+                            <td>{job.status || 'N/A'}</td>
+                            <td>{job.started_at || 'N/A'}</td>
+                            <td>{job.completed_at || 'N/A'}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan={5}>No pipeline job records available.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>No pipeline job data available.</p>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="prediction-card">
-          <h3>Raw Counts by Market</h3>
-          {rawCounts ? (
-            <ul className="debug-list">
-              {Object.entries(rawCounts).map(([marketKey, count]) => (
-                <li key={marketKey}><strong>{marketKey}:</strong> {count}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>No raw count data available.</p>
-          )}
-        </div>
-        <div className="prediction-card">
-          <h3>Pipeline Job History</h3>
-          {pipelineJobs ? (
-            <div className="debug-table-wrap" style={{ maxHeight: '260px', overflowY: 'auto' }}>
-              <table className="debug-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Started At</th>
-                    <th>Completed At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pipelineJobs.length ? (
-                    pipelineJobs.map((job: any) => (
-                      <tr key={job.id}>
-                        <td>{job.id}</td>
-                        <td>{job.job_type || 'N/A'}</td>
-                        <td>{job.status || 'N/A'}</td>
-                        <td>{job.started_at || 'N/A'}</td>
-                        <td>{job.completed_at || 'N/A'}</td>
+            {/* Feature Sample Explorer */}
+            <div className="debug-section">
+              <h4>Feature Sample Explorer</h4>
+              <p className="grid-description">Inspect feature vectors extracted for a specific symbol.</p>
+              <div className="prediction-form">
+                <label>
+                  Symbol
+                  <input
+                    type="text"
+                    value={symbol}
+                    onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+                    placeholder="AAPL"
+                  />
+                </label>
+                <label>
+                  Market
+                  <select value={market} onChange={(event) => setMarket(event.target.value)}>
+                    <option value="US">US</option>
+                    <option value="IN">India</option>
+                    <option value="JP">Japan</option>
+                  </select>
+                </label>
+                <button className="btn btn-primary" type="button" onClick={fetchFeatureSample} disabled={loading}>
+                  {loading ? 'Loading...' : 'Fetch Feature Sample'}
+                </button>
+              </div>
+
+              {featureSample.length ? (
+                <div className="debug-table-wrap" style={{ maxHeight: '300px', overflowY: 'auto', marginTop: '1rem' }}>
+                  <table className="debug-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Feature</th>
+                        <th>Value</th>
+                        <th>Source</th>
                       </tr>
-                    ))
-                  ) : (
-                    <tr><td colSpan={5}>No pipeline job records available.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {featureSample.map((feature, index) => (
+                        <tr key={`${feature.feature_name}-${index}`}>
+                          <td>{feature.as_of_date || 'N/A'}</td>
+                          <td>{feature.feature_name}</td>
+                          <td>{feature.numeric_value ?? feature.text_value ?? 'N/A'}</td>
+                          <td>{feature.source_name}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>No feature rows loaded yet.</p>
+              )}
             </div>
-          ) : (
-            <p>No pipeline job data available.</p>
-          )}
-        </div>
-        <div className="prediction-card">
-          <h3>Scheduler Status</h3>
-          {schedulerStatus ? (
-            <div className="debug-table-wrap">
-              <table className="debug-table">
-                <tbody>
-                  <tr><td>Scheduler running</td><td>{schedulerStatus.scheduler_running ? 'Yes' : 'No'}</td></tr>
-                  {schedulerStatus.message && (
-                    <tr><td>Message</td><td>{schedulerStatus.message}</td></tr>
-                  )}
-                  {schedulerStatus.jobs && schedulerStatus.jobs.length > 0 && (
-                    <tr>
-                      <td>Scheduled jobs</td>
-                      <td>
-                        <ul className="debug-list">
-                          {schedulerStatus.jobs.map((job) => (
-                            <li key={job.id}>
-                              <strong>{job.id}</strong>: next run {job.next_run_time || 'unknown'}
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p>Loading scheduler details...</p>
-          )}
-        </div>
-      </section> 
-      <section className="debug-grid">
-        <div className="prediction-card prediction-card-full">
-          <h3>Developer Actions</h3>
-          <div className="prediction-form">
-            <label>
-              Symbol
-              <input
-                type="text"
-                value={symbol}
-                onChange={(event) => setSymbol(event.target.value.toUpperCase())}
-                placeholder="AAPL"
-              />
-            </label>
-            <label>
-              Market
-              <select value={market} onChange={(event) => setMarket(event.target.value)}>
-                <option value="US">US</option>
-                <option value="IN">India</option>
-                <option value="JP">Japan</option>
-              </select>
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" type="button" onClick={() => performDebugAction('ingest')} disabled={loading}>
-                {loading ? 'Working...' : 'Ingest Raw Data'}
-              </button>
-              <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('build')} disabled={loading}>
-                {loading ? 'Working...' : 'Build Features'}
-              </button>
-              <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('sync')} disabled={loading}>
-                {loading ? 'Working...' : 'Sync Raw + Features'}
-              </button>
-              <button className="btn btn-secondary" type="button" onClick={() => performDebugAction('orchestrate')} disabled={loading}>
-                {loading ? 'Working...' : 'Orchestrate Portfolio Sync'}
-              </button>
+
+            {/* Raw Data Sample Explorer */}
+            <div className="debug-section">
+              <h4>Raw Data Sample Explorer</h4>
+              <p className="grid-description">Inspect raw data collected for a specific symbol before feature engineering.</p>
+              <div className="prediction-form">
+                <label>
+                  Symbol
+                  <input
+                    type="text"
+                    value={symbol}
+                    onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+                    placeholder="AAPL"
+                  />
+                </label>
+                <label>
+                  Market
+                  <select value={market} onChange={(event) => setMarket(event.target.value)}>
+                    <option value="US">US</option>
+                    <option value="IN">India</option>
+                    <option value="JP">Japan</option>
+                  </select>
+                </label>
+                <button className="btn btn-primary" type="button" onClick={fetchRawSample} disabled={loading}>
+                  {loading ? 'Loading...' : 'Fetch Raw Sample'}
+                </button>
+              </div>
+
+              {rawSample.length ? (
+                <div className="debug-table-wrap" style={{ maxHeight: '300px', overflowY: 'auto', marginTop: '1rem' }}>
+                  <table className="debug-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Field</th>
+                        <th>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rawSample.map((record, index) => (
+                        <tr key={`${record.data_type}-${record.field_name}-${index}`}>
+                          <td>{record.as_of_date || 'N/A'}</td>
+                          <td>{record.data_type}</td>
+                          <td>{record.field_name}</td>
+                          <td>{record.numeric_value ?? record.text_value ?? 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>No raw rows loaded yet.</p>
+              )}
             </div>
           </div>
-          <p style={{ marginTop: '0.75rem', fontSize: '0.95rem', color: '#7a7a7a' }}>
-            Use these actions to fetch raw data for a symbol and generate feature vectors for inspection. Portfolio orchestration runs the scheduled pipeline flow for market readiness.
-          </p>
-        </div>
-      </section>
-
-      <section className="debug-grid">
-        <div className="prediction-card prediction-card-full">
-          <h3>Feature Sample Explorer</h3>
-          <div className="prediction-form">
-            <label>
-              Symbol
-              <input
-                type="text"
-                value={symbol}
-                onChange={(event) => setSymbol(event.target.value.toUpperCase())}
-                placeholder="AAPL"
-              />
-            </label>
-            <label>
-              Market
-              <select value={market} onChange={(event) => setMarket(event.target.value)}>
-                <option value="US">US</option>
-                <option value="IN">India</option>
-                <option value="JP">Japan</option>
-              </select>
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" type="button" onClick={fetchFeatureSample} disabled={loading}>
-                {loading ? 'Loading...' : 'Fetch Feature Sample'}
-              </button>
-            </div>
-          </div>
-
-          {featureSample.length ? (
-            <div className="debug-table-wrap">
-              <table className="debug-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Feature</th>
-                    <th>Value</th>
-                    <th>Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {featureSample.map((feature, index) => (
-                    <tr key={`${feature.feature_name}-${index}`}>
-                      <td>{feature.as_of_date || 'N/A'}</td>
-                      <td>{feature.feature_name}</td>
-                      <td>{feature.numeric_value ?? feature.text_value ?? 'N/A'}</td>
-                      <td>{feature.source_name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p>No feature rows loaded yet. Fetch a sample to inspect feature vectors.</p>
-          )}
-        </div>
-
-        <div className="prediction-card prediction-card-full">
-          <h3>Raw Data Sample Explorer</h3>
-          <div className="prediction-form">
-            <label>
-              Symbol
-              <input
-                type="text"
-                value={symbol}
-                onChange={(event) => setSymbol(event.target.value.toUpperCase())}
-                placeholder="AAPL"
-              />
-            </label>
-            <label>
-              Market
-              <select value={market} onChange={(event) => setMarket(event.target.value)}>
-                <option value="US">US</option>
-                <option value="IN">India</option>
-                <option value="JP">Japan</option>
-              </select>
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" type="button" onClick={fetchRawSample} disabled={loading}>
-                {loading ? 'Loading...' : 'Fetch Raw Sample'}
-              </button>
-            </div>
-          </div>
-
-          {rawSample.length ? (
-            <div className="debug-table-wrap">
-              <table className="debug-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Field</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rawSample.map((record, index) => (
-                    <tr key={`${record.data_type}-${record.field_name}-${index}`}>
-                      <td>{record.as_of_date || 'N/A'}</td>
-                      <td>{record.data_type}</td>
-                      <td>{record.field_name}</td>
-                      <td>{record.numeric_value ?? record.text_value ?? 'N/A'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p>No raw rows loaded yet. Fetch a sample to inspect raw ingestion data.</p>
-          )}
-        </div>
-      </section>
+        )}
+      </div>
     </div>
   );
 };
