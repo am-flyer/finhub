@@ -65,6 +65,7 @@ class FeatureEngineeringPipeline:
                 .filter(
                     RawDataRecord.market == market,
                     RawDataRecord.symbol == symbol,
+                    RawDataRecord.data_type == "price",
                     RawDataRecord.as_of_date != None,
                 )
                 .order_by(RawDataRecord.as_of_date.desc())

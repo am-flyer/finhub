@@ -173,13 +173,14 @@ def ingest_symbol(args: argparse.Namespace) -> None:
     store = PortfolioStore(settings.database_url)
     store.initialize()
     ingestion_manager = create_default_us_ingestion_manager(store)
-    ingestion_manager.ingest_symbol(
+    summary = ingestion_manager.ingest_symbol(
         args.symbol,
         market="US",
         start_date=datetime.fromisoformat(args.start_date) if args.start_date else None,
         end_date=datetime.fromisoformat(args.end_date) if args.end_date else None,
     )
     print(f"Ingested raw data for {args.symbol.upper()}")
+    print(json.dumps(summary, indent=2, default=str))
 
 
 def build_features() -> None:

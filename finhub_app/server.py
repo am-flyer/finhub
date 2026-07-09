@@ -680,6 +680,38 @@ class FinhubHTTPRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(500, str(e))
 
+    def handle_debug_ingest_symbol(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(post_data or "{}")
+            symbol = (data.get("symbol", "") or "").strip().upper()
+            market = (data.get("market", "US") or "US").strip().upper()
+            start_date = data.get("start_date")
+            end_date = data.get("end_date")
+
+            if not symbol:
+                self.send_json_error(400, "Missing required field 'symbol'")
+                return
+            if market != "US":
+                self.send_json_error(400, "Only US ingestion is currently supported")
+                return
+
+            start_dt = datetime.fromisoformat(start_date) if start_date else None
+            end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+            settings = get_settings()
+            store = PortfolioStore(settings.database_url)
+            store.initialize()
+            ingestion_manager = create_default_us_ingestion_manager(store)
+            summary = ingestion_manager.ingest_symbol(symbol, market=market, start_date=start_dt, end_date=end_dt)
+            raw_status = store.get_debug_raw_status()
+            self.send_json_response(200, {"success": True, "symbol": symbol, "market": market, "summary": summary, "raw_status": raw_status})
+        except ValueError as e:
+            self.send_json_error(400, str(e))
+        except Exception as e:
+            self.send_json_error(500, str(e))
+
     def handle_debug_orchestrate_portfolio(self):
         try:
             content_length = int(self.headers.get("Content-Length", 0))

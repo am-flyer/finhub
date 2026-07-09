@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Protocol
+import logging
 
 import yfinance as yf
 
@@ -330,6 +331,9 @@ class USMarketAdapter:
         return []
 
 
+logger = logging.getLogger(__name__)
+
+
 class RawSourceIngestionManager:
     def __init__(self, store: PortfolioStore, adapters: list[MarketAdapter]) -> None:
         self.store = store
@@ -341,31 +345,113 @@ class RawSourceIngestionManager:
         market: str = "US",
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-    ) -> None:
+    ) -> dict[str, int | list[str]]:
         adapter = self._find_adapter(market)
         if adapter is None:
             raise ValueError(f"No adapter registered for market {market}")
 
-        for record in adapter.collect_market_data(symbol, start_date=start_date, end_date=end_date):
-            self.store.save_raw_data_record(record)
+        results = {
+            "market_data_saved": 0,
+            "fundamentals_saved": 0,
+            "news_saved": 0,
+            "filings_saved": 0,
+            "options_saved": 0,
+            "events_saved": 0,
+            "macro_saved": 0,
+            "errors": [],
+        }
 
-        for record in adapter.collect_fundamentals(symbol):
-            self.store.save_raw_data_record(record)
+        def ingest_records(step_name: str, records: list, save_func):
+            count = 0
+            for record in records:
+                try:
+                    result = save_func(record)
+                    if result is not False:
+                        count += 1
+                except Exception as exc:
+                    error_message = f"{step_name} failed for {symbol.upper()}: {exc}"
+                    logger.warning(error_message)
+                    results["errors"].append(error_message)
+            results[f"{step_name}_saved"] = count
 
-        for news_record in adapter.collect_news(symbol, start_date=start_date, end_date=end_date):
-            self.store.save_raw_news_record(news_record)
+        try:
+            ingest_records(
+                "market_data",
+                adapter.collect_market_data(symbol, start_date=start_date, end_date=end_date),
+                self.store.save_raw_data_record,
+            )
+        except Exception as exc:
+            error_message = f"market_data collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
 
-        for filing_record in adapter.collect_filings(symbol):
-            self.store.save_raw_filing_record(filing_record)
+        try:
+            ingest_records(
+                "fundamentals",
+                adapter.collect_fundamentals(symbol),
+                self.store.save_raw_data_record,
+            )
+        except Exception as exc:
+            error_message = f"fundamentals collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
 
-        for options_record in adapter.collect_options(symbol):
-            self.store.save_raw_options_record(options_record)
+        try:
+            ingest_records(
+                "news",
+                adapter.collect_news(symbol, start_date=start_date, end_date=end_date),
+                self.store.save_raw_news_record,
+            )
+        except Exception as exc:
+            error_message = f"news collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
 
-        for event_record in adapter.collect_events(symbol):
-            self.store.save_raw_event_record(event_record)
+        try:
+            ingest_records(
+                "filings",
+                adapter.collect_filings(symbol),
+                self.store.save_raw_filing_record,
+            )
+        except Exception as exc:
+            error_message = f"filings collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
 
-        for macro_record in adapter.collect_macro():
-            self.store.save_raw_macro_record(macro_record)
+        try:
+            ingest_records(
+                "options",
+                adapter.collect_options(symbol),
+                self.store.save_raw_options_record,
+            )
+        except Exception as exc:
+            error_message = f"options collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
+
+        try:
+            ingest_records(
+                "events",
+                adapter.collect_events(symbol),
+                self.store.save_raw_event_record,
+            )
+        except Exception as exc:
+            error_message = f"events collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
+
+        try:
+            ingest_records(
+                "macro",
+                adapter.collect_macro(),
+                self.store.save_raw_macro_record,
+            )
+        except Exception as exc:
+            error_message = f"macro collection failed for {symbol.upper()}: {exc}"
+            logger.warning(error_message)
+            results["errors"].append(error_message)
+
+        return results
 
     def ingest_positions(
         self,
@@ -373,9 +459,33 @@ class RawSourceIngestionManager:
         market: str = "US",
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-    ) -> None:
+    ) -> dict[str, int | list[str]]:
+        aggregated = {
+            "symbols": [],
+            "market_data_saved": 0,
+            "fundamentals_saved": 0,
+            "news_saved": 0,
+            "filings_saved": 0,
+            "options_saved": 0,
+            "events_saved": 0,
+            "macro_saved": 0,
+            "errors": [],
+        }
         for symbol in sorted(set(symbol.strip().upper() for symbol in symbols if symbol.strip())):
-            self.ingest_symbol(symbol, market=market, start_date=start_date, end_date=end_date)
+            result = self.ingest_symbol(symbol, market=market, start_date=start_date, end_date=end_date)
+            aggregated["symbols"].append(symbol)
+            for key in [
+                "market_data_saved",
+                "fundamentals_saved",
+                "news_saved",
+                "filings_saved",
+                "options_saved",
+                "events_saved",
+                "macro_saved",
+            ]:
+                aggregated[key] += result.get(key, 0)
+            aggregated["errors"].extend(result.get("errors", []))
+        return aggregated
 
     def _find_adapter(self, market: str) -> MarketAdapter | None:
         market_key = market.strip().upper()

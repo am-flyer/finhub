@@ -549,8 +549,16 @@ class PortfolioStore:
             session.commit()
 
     def save_raw_macro_record(self, record: RawMacroPayload) -> None:
-            with self.session_factory() as session:
-                payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+        with self.session_factory() as session:
+            payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
+            existing = session.query(RawMacroRecord).filter(
+                RawMacroRecord.market == record.market,
+                RawMacroRecord.macro_name == record.macro_name,
+                RawMacroRecord.as_of_date == record.as_of_date,
+                RawMacroRecord.source_name == record.source_name,
+                RawMacroRecord.source_type == record.source_type,
+            ).first()
+            if existing is None:
                 session.add(
                     RawMacroRecord(
                         market=record.market,
@@ -564,24 +572,42 @@ class PortfolioStore:
                         retrieved_at=record.retrieved_at or datetime.now(),
                     )
                 )
-                session.commit()
+            else:
+                existing.numeric_value = record.numeric_value
+                existing.text_value = record.text_value
+                existing.raw_payload = payload
+                existing.retrieved_at = record.retrieved_at or existing.retrieved_at
+            session.commit()
 
     def save_raw_event_record(self, record: RawEventPayload) -> None:
         with self.session_factory() as session:
             payload = json.dumps(record.raw_payload, default=str) if record.raw_payload is not None else None
-            session.add(
-                RawEventRecord(
-                    market=record.market,
-                    symbol=record.symbol.upper() if record.symbol else None,
-                    event_type=record.event_type,
-                    event_date=record.event_date,
-                    description=record.description,
-                    source_name=record.source_name,
-                    source_type=record.source_type,
-                    raw_payload=payload,
-                    retrieved_at=record.retrieved_at or datetime.now(),
+            existing = session.query(RawEventRecord).filter(
+                RawEventRecord.market == record.market,
+                RawEventRecord.symbol == (record.symbol.upper() if record.symbol else None),
+                RawEventRecord.event_type == record.event_type,
+                RawEventRecord.event_date == record.event_date,
+                RawEventRecord.source_name == record.source_name,
+                RawEventRecord.source_type == record.source_type,
+            ).first()
+            if existing is None:
+                session.add(
+                    RawEventRecord(
+                        market=record.market,
+                        symbol=record.symbol.upper() if record.symbol else None,
+                        event_type=record.event_type,
+                        event_date=record.event_date,
+                        description=record.description,
+                        source_name=record.source_name,
+                        source_type=record.source_type,
+                        raw_payload=payload,
+                        retrieved_at=record.retrieved_at or datetime.now(),
+                    )
                 )
-            )
+            else:
+                existing.description = record.description
+                existing.raw_payload = payload
+                existing.retrieved_at = record.retrieved_at or existing.retrieved_at
             session.commit()
 
     def save_feature_record(self, feature: "FeatureRecord") -> None:
